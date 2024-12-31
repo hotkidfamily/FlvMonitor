@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "FlvMonitor (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "FlvMonitor (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
