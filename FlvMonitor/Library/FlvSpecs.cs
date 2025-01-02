@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FlvToolbox.Toolbox;
+using Windows.Foundation.Metadata;
 
 namespace FlvToolbox.Library
 {
@@ -84,9 +85,13 @@ namespace FlvToolbox.Library
         private FileStream _fs;
         long _fileOffset = 0;
         long _fileLength = 0;
-        private static readonly byte[] _startCode = new byte[] { 0, 0, 0, 1 };
 
         private int _nalLengthSize = 4;
+        private bool _hevc_in_annexb = true;
+        private long _last_video_dts = long.MaxValue;
+        private long _last_video_pts = long.MaxValue;
+        private long _last_audio_pts = long.MaxValue;
+
         enum H264NalType : int
         {
             NAL_UNSPECIFIED = 0,
@@ -229,7 +234,106 @@ namespace FlvToolbox.Library
             Seek(dataOffset);
 
             var prevTagSize = ReadUInt32();
+            _ = ParseHEVCMuxerType(ref _hevc_in_annexb);
+
             return dataOffset + 4;
+        }
+
+        /*
+         * Parse Video Tag to guess either annexb or standard mp4 format
+         * return: True -> parse end
+         *         False -> next Tag
+         */
+        private bool PreParseTag(ref int VideoTags, ref bool bAnnexb)
+        {
+            uint tagType, dataSize, timeStamp, streamID, mediaInfo, pkgType = 0, codecId = 0;
+            byte[] data;
+            long curTagpos = 0;
+            uint tagSize = 0;
+
+            if ((_fileLength - _fileOffset) < 11)
+            {
+                return false;
+            }
+            curTagpos = CurReadPosition();
+            // Read tag header
+            tagType = ReadUInt8();
+            dataSize = ReadUInt24();
+            timeStamp = ReadUInt24();
+            timeStamp |= ReadUInt8() << 24;
+            streamID = ReadUInt24();
+
+            tagSize = dataSize + 11;
+
+            // Read tag data
+            if (dataSize == 0)
+            {
+                return true;
+            }
+            if ((_fileLength - _fileOffset) < dataSize)
+            {
+                return false;
+            }
+
+            mediaInfo = ReadUInt8();
+            UInt32 composition = GetUInt32();
+            dataSize -= 1;
+            data = ReadBytes((int)dataSize);
+
+            if ((tagType == 0x9) && ((mediaInfo >> 4) != 5))
+            {
+                VideoTags++;
+                pkgType = (mediaInfo >> 4) & 0x0f;
+                codecId = mediaInfo & 0x0f;
+
+                if (codecId == 12)
+                {
+                    /* 
+                     * first 4 byte = AVCPacketType + CompositionTime
+                     * var AVCPacketType = data[0]; 
+                     */
+                    bool annexb = data[4] == 0x00 && data[5] == 0x00 && ((data[6] == 0x00 && data[7] == 0x01) || (data[6] == 0x01));
+
+                    bAnnexb = annexb;
+                }
+                else
+                {
+                    bAnnexb = false;
+                }
+
+                return true;
+            }
+            return false;
+        }
+
+        public bool ParseHEVCMuxerType(ref bool bAnnexb)
+        {
+            var offset = _fileOffset;
+            int trueCnt = 0;
+            uint prevTagSize;
+            bool bAnnexb1 = false;
+            int videoTagParseCnt = 0;
+            int maxVideoTagParseCnt = 100; /* max parse tag is 100 video frames */
+            while (_fileOffset < _fileLength)
+            {
+                if (PreParseTag(ref videoTagParseCnt, ref bAnnexb1))
+                {
+                    if (bAnnexb1) trueCnt++;
+                };
+
+                if (videoTagParseCnt > maxVideoTagParseCnt)
+                    break;
+
+                if ((_fileLength - _fileOffset) < 4)
+                    break;
+
+                prevTagSize = ReadUInt32();
+            }
+
+            bAnnexb = videoTagParseCnt == trueCnt ? true : false;
+
+            Seek(offset);
+            return true;
         }
 
         public bool parseTag(long offset, out FlvTag detail)
@@ -279,6 +383,16 @@ namespace FlvToolbox.Library
                 detail.v.codecID = strVideoCodecID(codecID) + "[" + codecID + "]";
                 detail.v.avcPacketType = strVideoAVCPacketType(avcPacketType) + "[" + avcPacketType + "]";
                 detail.v.compositionTime = compositionTime;
+
+                if (_last_video_dts == long.MaxValue)
+                {
+                    _last_video_dts = timeStamp;
+                }
+                if (_last_video_pts == long.MaxValue)
+                {
+                    _last_video_pts = timeStamp + compositionTime;
+                }
+
                 Seek(offset);
                 data = ReadBytes((int)dataSize + 11);
                 if(codecID == 7)
@@ -310,6 +424,11 @@ namespace FlvToolbox.Library
                 detail.a.soundType = type == 0 ? "Mono " : "Stereo " + "[" + type + "]";
                 detail.a.aacPacketType = pkttype == 0 ? "aac sequence header " : pkttype == 1 ? "aac raw " : " ";
                 detail.a.aacPacketType += "[" + pkttype + "]";
+
+                if (_last_audio_pts == long.MaxValue)
+                {
+                    _last_audio_pts = timeStamp;
+                }
 
                 Seek(offset);
                 data = ReadBytes((int)dataSize + 11);
@@ -408,14 +527,9 @@ namespace FlvToolbox.Library
 
             int nalus = 0;
 
-            int dataOffset = 16; // 11 bytes tag size + 5 bytes video tag 
-
-            int v1 = BitConverter.ToInt32(data, dataOffset);
-            int v2 = BitConverter.ToInt32(_startCode, 0);
-
-            if (v1 == v2) // annexb format
+            if (_hevc_in_annexb) // annexb format
             {
-                byte[] ss = new byte[3] { 0, 0, 1 };
+                byte[] ss = [0, 0, 1];
                 var indexs = data.FindIndexOf(ss);
                 nalus = indexs.Count(); ;
                 detail.v.NaluDetails = new NaluDetail[nalus];
@@ -427,65 +541,69 @@ namespace FlvToolbox.Library
                     detail.v.NaluDetails[j++] = new NaluDetail() { type = naltype, offset = offset }; 
                 }
             }
-            else if (data[dataOffset - 4] == 0)
-            { // Headers HVCCDecoderConfigurationRecord
-                if (data.Length < 10) return false;
+            else
+            {
+                int dataOffset = 16; // 11 bytes tag size + 5 bytes video tag 
+                var AVCPacketType = data[12]; // 11 bytes tag size + 1 offset
 
-                int offset, nalArrays;
-
-                offset = (int)HVCCPayloadOffset.lengthSizeMinusOne + dataOffset;
-                _nalLengthSize = (data[offset++] & 0x03) + 1;
-
-                offset = (int)HVCCPayloadOffset.numOfArrays + dataOffset;
-                nalArrays = data[offset++];
-
-                detail.v.NaluDetails = new NaluDetail[nalArrays];
-
-                for (int i = 0; i < nalArrays; i++)
+                if (AVCPacketType == 0)
                 {
-                    int nalType = data[offset++] & 0x3f;
-                    int numNalus = (int)BitConverterBE.ToUInt16(data, offset);
-                    offset += 2;
+                    int offset, nalArrays;
 
-                    for (int j = 0; j < numNalus; j++)
+                    offset = (int)HVCCPayloadOffset.lengthSizeMinusOne + dataOffset;
+                    _nalLengthSize = (data[offset++] & 0x03) + 1;
+
+                    offset = (int)HVCCPayloadOffset.numOfArrays + dataOffset;
+                    nalArrays = data[offset++];
+
+                    detail.v.NaluDetails = new NaluDetail[nalArrays];
+
+                    for (int i = 0; i < nalArrays; i++)
                     {
-                        int len = (int)BitConverterBE.ToUInt16(data, offset);
+                        int nalType = data[offset++] & 0x3f;
+                        int numNalus = (int)BitConverterBE.ToUInt16(data, offset);
                         offset += 2;
 
-                        string naltype = ((HEVCNalType)((data[offset] >> 1) & 0x3f)).ToString();
-                        detail.v.NaluDetails[i] = new NaluDetail() { type = naltype, offset = offset };
+                        for (int j = 0; j < numNalus; j++)
+                        {
+                            int len = (int)BitConverterBE.ToUInt16(data, offset);
+                            offset += 2;
 
-                        offset += len;
-                        nalus++;
+                            string naltype = ((HEVCNalType)((data[offset] >> 1) & 0x3f)).ToString();
+                            detail.v.NaluDetails[i] = new NaluDetail() { type = naltype, offset = offset };
 
+                            offset += len;
+                            nalus++;
+
+                            if (offset >= data.Length)
+                                break;
+                        }
                         if (offset >= data.Length)
                             break;
                     }
-                    if (offset >= data.Length)
-                        break;
                 }
-            }
-            else
-            { // Video data
-                int offset = dataOffset;
+                else
+                { // Video data
+                    int offset = dataOffset;
 
-                int i = 0;
+                    int i = 0;
 
-                detail.v.NaluDetails = new NaluDetail[256];
-                while (offset <= data.Length - _nalLengthSize)
-                {
-                    int len = (_nalLengthSize == 2) ?
-                        (int)BitConverterBE.ToUInt16(data, offset) :
-                        (int)BitConverterBE.ToUInt32(data, offset);
-                    offset += _nalLengthSize;
+                    detail.v.NaluDetails = new NaluDetail[256];
+                    while (offset <= data.Length - _nalLengthSize)
+                    {
+                        int len = (_nalLengthSize == 2) ?
+                            (int)BitConverterBE.ToUInt16(data, offset) :
+                            (int)BitConverterBE.ToUInt32(data, offset);
+                        offset += _nalLengthSize;
 
-                    string naltype = ((HEVCNalType)((data[offset] >> 1) & 0x3f)).ToString();
+                        string naltype = ((HEVCNalType)((data[offset] >> 1) & 0x3f)).ToString();
 
-                    detail.v.NaluDetails[i++] = new NaluDetail() { type = naltype, offset = offset };
+                        detail.v.NaluDetails[i++] = new NaluDetail() { type = naltype, offset = offset };
 
-                    if (offset + len > data.Length) break;
-                    offset += len;
-                    nalus++;
+                        if (offset + len > data.Length) break;
+                        offset += len;
+                        nalus++;
+                    }
                 }
             }
 

@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using WinUIEx;
 
@@ -19,7 +20,23 @@ using WinUIEx;
 
 namespace FlvMonitor
 {
+    internal class ListViewAVFrameIntervalConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value is ParseListViewItem b)
+            {
+                return b.TagType == $"🔈8" ? $"  {b.AptsD}" : 
+                            b.TagType == $"🎥9" ? $"  \t{b.VdtsD}/{b.VptsD}" : " ";
+            }
+            throw new NotImplementedException();
+        }
 
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
     internal class ListViewItemOEConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, string language)
@@ -45,9 +62,10 @@ namespace FlvMonitor
         public uint TagSize { get; set; }
         public string NalType { get; set; }
         public string CodecId { get; set; }
-        public uint PTS { get; set; }
-        public long VPD { get; set; }
-        public long APD { get; set; }
+        public string PTS { get; set; }
+        public long VdtsD { get; set; }
+        public long VptsD { get; set; }
+        public long AptsD { get; set; }
         public string Image { get; set; }
     }
 
@@ -93,26 +111,28 @@ namespace FlvMonitor
             if (e.DataView.Contains(StandardDataFormats.StorageItems))
             {
                 _items.Clear();
-                var items = (await e.DataView.GetStorageItemsAsync()).ToList();
+                var files = (await e.DataView.GetStorageItemsAsync()).ToList();
                 List<string> paths = [];
-                for (int i = 0; i < items.Count; i++)
+                for (int i = 0; i < files.Count; i++)
                 {
-                    paths.Add(items[i].Path);
+                    paths.Add(files[i].Path);
                 }
 
                 FileInfo fi = new(paths[0]);
-                _queue.TryEnqueue(() =>
-                {
-                    PBLoading.Maximum = fi.Length;
-                });
+                double oldp = 0;
 
-                _statusThread = new Thread(() =>
+                _statusThread = new Thread(async () =>
                 {
                     int frameid = 0;
+                    long last_video_dts = long.MaxValue;
+                    long last_video_pts = long.MaxValue;
+                    long last_audio_pts = long.MaxValue;
+
                     foreach (var flv in _extraAction(paths[0]))
                     {
                         ParseListViewItem it = new();
-                        it.PTS = flv.timestamp;
+                        string format = @"hh\:mm\:ss\:fff";
+                        it.PTS = $"{TimeSpan.FromMilliseconds(flv.timestamp).ToString(format)} / {flv.timestamp}";
                         it.Offset = flv.addr;
                         it.FrameId =  frameid++;
                         it.TagSize = flv.dataSize;
@@ -120,7 +140,16 @@ namespace FlvMonitor
                         {
                             it.CodecId = flv.a.soundFormat;
                             it.NalType = flv.a.aacPacketType;
-                            it.TagType = $"🎙️{flv.tagType}";
+                            it.TagType = $"🔈{flv.tagType}";
+
+                            if (last_audio_pts == long.MaxValue)
+                            {
+                                last_audio_pts = flv.timestamp;
+                            }
+
+                            it.AptsD = flv.timestamp - last_audio_pts;
+
+                            last_audio_pts = flv.timestamp;
                         }
                         else if (flv.tagType == 9)
                         {
@@ -128,23 +157,51 @@ namespace FlvMonitor
                             StringBuilder v2 = new();
                             foreach (var v in flv.v.NaluDetails)
                             {
-                                if(v != null)
+                                if (v != null)
                                     v2.Append($"{v?.type}, ");
                             }
                             it.NalType = v2.ToString();
-                            it.TagType = $"📹{flv.tagType}";
+                            it.TagType = $"🎥{flv.tagType}";
+
+                            if (last_video_dts == long.MaxValue)
+                            {
+                                last_video_dts = flv.timestamp;
+                            }
+
+                            long pts = flv.timestamp + flv.v.compositionTime;
+                            if (last_video_pts == long.MaxValue)
+                            {
+                                last_video_pts = pts;
+                            }
+
+                            it.VdtsD = flv.timestamp - last_video_dts;
+                            it.VptsD = pts - last_video_pts;
+
+                            last_video_dts = flv.timestamp;
+                            last_video_pts = pts;
                         }
                         else
                         {
                             it.TagType = $"📄{flv.tagType}";
                         }
 
-                        _queue.TryEnqueue(() =>
+                        var newp = (flv.addr * 100 / fi.Length + 0.5);
+                        if (oldp != newp)
                         {
-                            PBLoading.Value = flv.addr;
+                            _queue.TryEnqueue(() =>
+                            {
+                                PBLoading.Value = newp;
+                            });
+                        }
+
+                        _queue.TryEnqueue(() => {
                             _items.Add(it);
                         });
+                        await Task.Yield();
                     }
+                    _queue.TryEnqueue(() => {
+                        PBLoading.Value = 100;
+                    });
                 });
 
                 _statusThread.Start();

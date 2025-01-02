@@ -12,87 +12,103 @@
     <Grid AllowDrop="True"
           DragLeave="Grid_DragOver">
         <Grid.Resources>
-            <local:ListViewItemOEConverter x:Key="ListViewItemOEConverter"/>
+            <local:ListViewItemOEConverter x:Key="ListViewItemOEConverter" />
+            <local:ListViewAVFrameIntervalConverter x:Key="ListViewAVFrameIntervalConverter" />
         </Grid.Resources>
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
+            <RowDefinition Height="24" />
             <RowDefinition />
         </Grid.RowDefinitions>
         <ProgressBar Grid.Row="0"
                      Name="PBLoading"
                      Margin="4, 0, 4, 0"
-                     Background="LimeGreen" />
+                     Minimum="0"
+                     Maximum="100"
+                     Background="AliceBlue"
+                     Foreground="AntiqueWhite"
+                     MinHeight="8"
+                     />
         <ListView Grid.Row="1"
                   Name="LVMain"
-                  SelectionMode="Single"
-                  BackgroundSizing="OuterBorderEdge">
+                  SelectionMode="Single">
             <ListView.HeaderTemplate>
                 <DataTemplate>
-                    <Grid Background="AliceBlue">
+                    <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="0.5*" />
-                            <ColumnDefinition Width="0.5*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="8*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="20*" />
+                            <ColumnDefinition Width="8*" />
+                            <ColumnDefinition Width="15*" />
+                            <ColumnDefinition Width="10*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="10*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0">TagType</TextBlock>
-                        <TextBlock Grid.Column="1">FrameId</TextBlock>
-                        <TextBlock Grid.Column="2">Offset</TextBlock>
-                        <TextBlock Grid.Column="3">TagSize</TextBlock>
-                        <TextBlock Grid.Column="4">NalType</TextBlock>
-                        <TextBlock Grid.Column="5">CodecId</TextBlock>
-                        <TextBlock Grid.Column="6">PTS</TextBlock>
-                        <TextBlock Grid.Column="7">Video-PTS-Diff</TextBlock>
-                        <TextBlock Grid.Column="8">Audio-PTS-Diff</TextBlock>
-                        <TextBlock Grid.Column="9">Image</TextBlock>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="16,0,0,0">TagType</TextBlock>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center">FrameId</TextBlock>
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center">Offset</TextBlock>
+                        <TextBlock Grid.Column="3" VerticalAlignment="Center">TagSize</TextBlock>
+                        <TextBlock Grid.Column="4" VerticalAlignment="Center">NalType</TextBlock>
+                        <TextBlock Grid.Column="5" VerticalAlignment="Center">CodecId</TextBlock>
+                        <TextBlock Grid.Column="6" VerticalAlignment="Center">PTS</TextBlock>
+                        <TextBlock Grid.Column="7" VerticalAlignment="Center">Interval</TextBlock>
+                        <TextBlock Grid.Column="8" VerticalAlignment="Center">-</TextBlock>
+                        <TextBlock Grid.Column="9" VerticalAlignment="Center">Image</TextBlock>
                     </Grid>
                 </DataTemplate>
             </ListView.HeaderTemplate>
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Grid Background="{Binding Converter={StaticResource ListViewItemOEConverter}, ConverterParameter={Binding FrameId}}" BorderThickness="0" Padding="0" Margin="0">
+                    <Grid Background="{Binding Converter={StaticResource ListViewItemOEConverter}, ConverterParameter={Binding FrameId}}"
+                          MinHeight="36" Height="36">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="0.5*" />
-                            <ColumnDefinition Width="0.5*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="8*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="20*" />
+                            <ColumnDefinition Width="8*" />
+                            <ColumnDefinition Width="15*" />
+                            <ColumnDefinition Width="10*" />
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="10*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0"
-                                   Text="{Binding TagType}" />
+                                   Text="{Binding TagType}"
+                                   VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1"
-                                   Text="{Binding FrameId}" />
+                                   Text="{Binding FrameId}"
+                                   VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2"
-                                   Text="{Binding Offset}" />
+                                   Text="{Binding Offset}"
+                                   VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="3"
-                                   Text="{Binding TagSize}" />
+                                   Text="{Binding TagSize}"
+                                   VerticalAlignment="Center" />
                         <TextBlock Grid.Column="4"
                                    Text="{Binding NalType}"
                                    TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis"/>
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
                         <TextBlock Grid.Column="5"
                                    Text="{Binding CodecId}"
                                    TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis" />
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
                         <TextBlock Grid.Column="6"
-                                   Text="{Binding PTS}" />
+                                   Text="{Binding PTS}"
+                                   VerticalAlignment="Center" />
                         <TextBlock Grid.Column="7"
-                                   Text="{Binding VPD}" />
+                                   Text="{Binding Converter={StaticResource ListViewAVFrameIntervalConverter}, ConverterParameter={Binding VPD}}"
+                                   VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="8"
-                                   Text="{Binding APD}" />
-                        <TextBlock Grid.Column="9"
-                                   Text="{Binding Image}" />
+                                   Text="-"
+                                   VerticalAlignment="Center"/>
+                        <ImageIcon Grid.Column="9"
+                                   Source="{Binding Image}"
+                                   VerticalAlignment="Center"/>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
