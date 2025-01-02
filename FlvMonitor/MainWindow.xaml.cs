@@ -91,6 +91,7 @@ namespace FlvMonitor
 
             _queue = DispatcherQueue.GetForCurrentThread();
             LVMain.ItemsSource = _items;
+            this.Title = $"FlvMonitor {VersionInfo.DisplayVersion}";
         }
 
         private IEnumerable<FlvTag> _extraAction(string path)

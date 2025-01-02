@@ -16,18 +16,40 @@
             <local:ListViewAVFrameIntervalConverter x:Key="ListViewAVFrameIntervalConverter" />
         </Grid.Resources>
         <Grid.RowDefinitions>
-            <RowDefinition Height="24" />
+            <RowDefinition Height="48" />
             <RowDefinition />
         </Grid.RowDefinitions>
-        <ProgressBar Grid.Row="0"
-                     Name="PBLoading"
-                     Margin="4, 0, 4, 0"
-                     Minimum="0"
-                     Maximum="100"
-                     Background="AliceBlue"
-                     Foreground="AntiqueWhite"
-                     MinHeight="8"
-                     />
+        <Grid Grid.Row="0" Background="LightBlue">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="8*" />
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                <Button Height="36">
+                    <Image Source="Assets/i36_dv.png"/>
+                </Button>
+                <Button Height="36">
+                    <Image Source="Assets/url.png"/>
+                </Button>
+                <ComboBox VerticalAlignment="Center"
+                          Height="36">
+                    <ComboBoxItem Content="All Tags" IsSelected="True"/>
+                    <ComboBoxItem Content="Video Tags" />
+                    <ComboBoxItem Content="Audio Tags" />
+                </ComboBox>
+            </StackPanel>
+            <ProgressBar Grid.Column="1"
+                         Name="PBLoading"
+                         Margin="4, 0, 4, 0"
+                         Minimum="0"
+                         Maximum="100"
+                         Background="AliceBlue"
+                         Foreground="AntiqueWhite"
+                         MinHeight="8" />
+        </Grid>
+        
         <ListView Grid.Row="1"
                   Name="LVMain"
                   SelectionMode="Single">
