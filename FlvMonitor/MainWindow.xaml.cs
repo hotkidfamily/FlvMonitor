@@ -1,4 +1,6 @@
-﻿using FlvToolbox.Library;
+﻿using FFmpeg.AutoGen;
+using FFmpeg.AutoGen.Example;
+using FlvMonitor.Library;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -8,16 +10,12 @@ using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage.Pickers;
 using WinUIEx;
-using static System.Collections.Specialized.BitVector32;
 
 
 // To learn more about WinUI, the WinUI project structure,
@@ -32,7 +30,7 @@ namespace FlvMonitor
             if (value is ParseListViewItem b)
             {
                 return b.TagType == $"🔈8" ? $"  {b.AptsD}" :
-                            b.TagType == $"🎥9" ? $"  \t{b.VdtsD}/{b.VptsD}" : " ";
+                            b.TagType == $"🎥9" ? $"  \t{b.VdtsD} / {b.VptsD}" : " ";
             }
             throw new NotImplementedException();
         }
@@ -58,6 +56,19 @@ namespace FlvMonitor
             throw new NotImplementedException();
         }
     }
+    internal class LongToHexConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            return $"0x{value:X8}";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
 
     public class ParseListViewItem
     {
@@ -71,7 +82,7 @@ namespace FlvMonitor
         public long VdtsD { get; set; }
         public long VptsD { get; set; }
         public long AptsD { get; set; }
-        public string Image { get; set; }
+        public string Image{ get; set; }
     }
 
     /// <summary>
@@ -83,6 +94,8 @@ namespace FlvMonitor
         private DispatcherQueue _queue;
         private ObservableCollection<ParseListViewItem> _itemsViewList = [];
         private List<FlvTag> _itemsList = [];
+        private ContentDialog _contentDialog;
+        private string _tempPath = default!;
 
         public MainWindow()
         {
@@ -96,8 +109,20 @@ namespace FlvMonitor
             this.Move(640, 1280);
 
             _queue = DispatcherQueue.GetForCurrentThread();
-            this.Title = $"FlvMonitor {VersionInfo.DisplayVersion}";
+            AppTitle.Text = $"FlvMonitor {VersionInfo.DisplayVersion}";
             DVButton.IsEnabled = _itemsViewList.Count > 0;
+            _contentDialog = new ContentDialog();
+
+            this.ExtendsContentIntoTitleBar = true;
+            this.SetTitleBar(AppTitleBar);
+
+            FFmpegBinariesHelper.RegisterFFmpegBinaries();
+            _tempPath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp\\FlvMonitor");
+
+            if (!Path.Exists(_tempPath))
+            {
+                Directory.CreateDirectory(_tempPath);
+            }
         }
 
         private IEnumerable<FlvTag> _extraAction(string path)
@@ -117,10 +142,12 @@ namespace FlvMonitor
         {
             var TagTypes = TagComboBox.SelectedIndex;
             _itemsViewList.Clear();
+
             int frameid = 0;
             long last_video_dts = long.MaxValue;
             long last_video_pts = long.MaxValue;
             long last_audio_pts = long.MaxValue;
+
             if (TagTypes == 0)
             {
                 foreach (var flv in _itemsList)
@@ -133,8 +160,15 @@ namespace FlvMonitor
                     it.TagSize = flv.dataSize;
                     if (flv.tagType == 8)
                     {
-                        it.CodecId = flv.a.soundFormat;
-                        it.NalType = flv.a.aacPacketType;
+                        var soundFormat = FlvSpecs.strSoundFormat(flv.a.soundFormat) + "[" + flv.a.soundFormat + "]";
+                        //var soundRate = FlvSpecs.strSoundSampleRate(flv.a.soundRate) + "[" + flv.a.soundRate + "]";
+                        //var soundSize = flv.a.soundSize == 0 ? "8bits " : "16bits " + "[" + flv.a.soundSize + "]";
+                        //var soundType = flv.a.soundType == 0 ? "Mono " : "Stereo " + "[" + flv.a.soundType + "]";
+                        var aacPacketType = flv.a.aacPacketType == 0 ? "aac sequence header " : flv.a.aacPacketType == 1 ? "aac raw " : " ";
+                        aacPacketType += "[" + flv.a.aacPacketType + "]";
+
+                        it.CodecId = soundFormat;
+                        it.NalType = aacPacketType;
                         it.TagType = $"🔈{flv.tagType}";
 
                         if (last_audio_pts == long.MaxValue)
@@ -148,14 +182,19 @@ namespace FlvMonitor
                     }
                     else if (flv.tagType == 9)
                     {
-                        it.CodecId = flv.v.codecID;
-                        StringBuilder v2 = new();
+                        it.CodecId = FlvSpecs.strVideoCodecID(flv.v.codecID) + "[" + flv.v.codecID + "]"; ;
+
+                        //detail.v.frametype = FlvSpecs.strVideoTagFrameType(frametype) + "[" + frametype + "]";
+                        //detail.v.codecID = FlvSpecs.strVideoCodecID(codecID) + "[" + codecID + "]";
+                        //detail.v.avcPacketType = FlvSpecs.strVideoAVCPacketType(avcPacketType) + "[" + avcPacketType + "]";
+
+                        List<string> types = [];
                         foreach (var v in flv.v.NaluDetails)
                         {
                             if (v != null)
-                                v2.Append($"{v?.type}, ");
+                                types.Add(v.type);
                         }
-                        it.NalType = v2.ToString();
+                        it.NalType = string.Join(", ", types);
                         it.TagType = $"🎥{flv.tagType}";
 
                         if (last_video_dts == long.MaxValue)
@@ -174,12 +213,20 @@ namespace FlvMonitor
 
                         last_video_dts = flv.timestamp;
                         last_video_pts = pts;
+                        //it.PTS = $"{TimeSpan.FromMilliseconds(flv.timestamp).ToString(format)} / {pts}";
+                        it.Image = Path.Join(_tempPath, $"{pts}.png");
                     }
                     else
                     {
                         it.TagType = $"📄{flv.tagType}";
                     }
                     _itemsViewList.Add(it);
+                    var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
+                    var oldp = PBLoading.Value;
+                    if (oldp != newp)
+                    {
+                        PBLoading.Value = newp;
+                    }
                 }
             }
             else if (TagTypes == 1)
@@ -194,14 +241,14 @@ namespace FlvMonitor
                         it.Offset = flv.addr;
                         it.FrameId =  frameid++;
                         it.TagSize = flv.dataSize;
-                        it.CodecId = flv.v.codecID;
-                        StringBuilder v2 = new();
+                        it.CodecId = FlvSpecs.strVideoCodecID(flv.v.codecID) + "[" + flv.v.codecID + "]"; ;
+                        List<string> types = [];
                         foreach (var v in flv.v.NaluDetails)
                         {
                             if (v != null)
-                                v2.Append($"{v?.type}, ");
+                                types.Add(v.type);
                         }
-                        it.NalType = v2.ToString();
+                        it.NalType = string.Join(", ", types);
                         it.TagType = $"🎥{flv.tagType}";
 
                         if (last_video_dts == long.MaxValue)
@@ -220,7 +267,16 @@ namespace FlvMonitor
 
                         last_video_dts = flv.timestamp;
                         last_video_pts = pts;
+
+                        it.Image = Path.Join(_tempPath, $"{pts}.png");
+                        //it.PTS = $"{TimeSpan.FromMilliseconds(flv.timestamp).ToString(format)} / {pts}";
                         _itemsViewList.Add(it);
+                    }
+                    var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
+                    var oldp = PBLoading.Value;
+                    if (oldp != newp)
+                    {
+                        PBLoading.Value = newp;
                     }
                 }
             }
@@ -237,8 +293,15 @@ namespace FlvMonitor
                         it.FrameId =  frameid++;
                         it.TagSize = flv.dataSize;
 
-                        it.CodecId = flv.a.soundFormat;
-                        it.NalType = flv.a.aacPacketType;
+                        var soundFormat = FlvSpecs.strSoundFormat(flv.a.soundFormat) + "[" + flv.a.soundFormat + "]";
+                        //var soundRate = FlvSpecs.strSoundSampleRate(flv.a.soundRate) + "[" + flv.a.soundRate + "]";
+                        //var soundSize = flv.a.soundSize == 0 ? "8bits " : "16bits " + "[" + flv.a.soundSize + "]";
+                        //var soundType = flv.a.soundType == 0 ? "Mono " : "Stereo " + "[" + flv.a.soundType + "]";
+                        var aacPacketType = flv.a.aacPacketType == 0 ? "aac sequence header " : flv.a.aacPacketType == 1 ? "aac raw " : " ";
+                        aacPacketType += "[" + flv.a.aacPacketType + "]";
+
+                        it.CodecId = soundFormat;
+                        it.NalType = aacPacketType;
                         it.TagType = $"🔈{flv.tagType}";
 
                         if (last_audio_pts == long.MaxValue)
@@ -252,37 +315,72 @@ namespace FlvMonitor
 
                         _itemsViewList.Add(it);
                     }
+                    var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
+                    var oldp = PBLoading.Value;
+                    if (oldp != newp)
+                    {
+                        PBLoading.Value = newp;
+                    }
                 }
             }
 
+            PBLoading.Value = 100;
             if (LVMain != null && _itemsList.Count > 0)
             {
                 LVMain.ItemsSource = _itemsViewList;
             }
         }
 
-        private async void Grid_DragOver(object sender, DragEventArgs e)
+        private void RunAysnc(string path)
         {
-            if (e.DataView.Contains(StandardDataFormats.StorageItems))
+            FileInfo fi = new(path);
+            
+            _itemsList.Clear();
+
+            _statusThread = new Thread(() =>
             {
-                _itemsViewList.Clear();
-                _itemsList.Clear();
-                var files = (await e.DataView.GetStorageItemsAsync()).ToList();
-                List<string> paths = [];
-                for (int i = 0; i < files.Count; i++)
+                try
                 {
-                    paths.Add(files[i].Path);
-                }
+                    double oldp = 0;
+                    FFmpegDecoder vd = new(_tempPath);
+                    //FFmpegDecoder ad = new(_tempPath);
 
-                FileInfo fi = new(paths[0]);
-                double oldp = 0;
-
-                _statusThread = new Thread(() =>
-                {
-
-                    foreach (var flv in _extraAction(paths[0]))
+                    foreach (var flv in _extraAction(path))
                     {
                         _itemsList.Add(flv);
+
+                        if(flv.tagType == 9)
+                        {
+                            var d = new Span<byte>(flv.data, 16, flv.data.Length - 16);
+                            if (!vd.Ready && flv.v.avcPacketType == 0)
+                            {
+                                AVCodecID ID = FFmpegDecoder.FlvVideoTypeToFFmpeg(flv.v.codecID);
+                                vd.CreateDecoder(ID, d, 64, 64);
+                            }
+                            
+                            {
+                                long pts = flv.timestamp + flv.v.compositionTime;
+                                vd.Decode(d, flv.timestamp, pts);
+                            }
+                        }
+
+                        if (flv.tagType == 8)
+                        {
+                            int audio_tag_len = 11 + (flv.a.soundFormat==10 ? 2 : 1);
+                            var d = new Span<byte>(flv.data, audio_tag_len, flv.data.Length - audio_tag_len);
+                            /*
+                            if (!ad.Ready && flv.a.aacPacketType == 0)
+                            {
+                                AVCodecID ID = FFmpegDecoder.FlvAudioTypeToFFmpeg(flv.a.soundFormat);
+                                ad.CreateDecoder(ID, d, 64, -1);
+                            }
+                            else
+                            {
+                                long pts = flv.timestamp + flv.v.compositionTime;
+                                ad.Decode(d, flv.timestamp, pts);
+                            }
+                            */
+                        }
 
                         var newp = (flv.addr * 100 / fi.Length + 0.5);
                         if (oldp != newp)
@@ -293,7 +391,18 @@ namespace FlvMonitor
                             });
                         }
                     }
-                    _queue.TryEnqueue(() => {
+                    if (vd.Ready)
+                    {
+                        vd.FreeCodec();
+                    }
+                    /*
+                    if (ad.Ready)
+                    {
+                        ad.FreeCodec();
+                    }
+                    */
+                    _queue.TryEnqueue(() =>
+                    {
                         PBLoading.Value = 100;
 
                         DVButton.IsEnabled = false;
@@ -302,21 +411,72 @@ namespace FlvMonitor
 
                         DVButton.IsEnabled = _itemsViewList.Count > 0;
                     });
-                });
+                }
+                catch (Exception ex)
+                {
+                    _queue.TryEnqueue(() =>
+                    {
+                        _contentDialog.XamlRoot = MainGrid.XamlRoot;
+                        _contentDialog.Content = ex.Message;
+                        _contentDialog.Title = "Error";
+                        _contentDialog.CloseButtonText = "OK";
+                        _ = _contentDialog.ShowAsync();
+                    });
+                }
+            });
 
-                _statusThread.Start();
-            }
+            _statusThread.Start();
+        }
 
+        private async void Grid_DragOver(object sender, DragEventArgs e)
+        {
             e.Handled = true;
+
+            if (e.DataView.Contains(StandardDataFormats.StorageItems))
+            {
+                var files = (await e.DataView.GetStorageItemsAsync()).ToList();
+                if (files.Count <= 0)
+                {
+                    return;
+                }
+
+                var path = files[0].Path;
+                RunAysnc(path);
+            }
         }
 
         private void TagComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            DVButton.IsEnabled = false;
+            if (_itemsList.Count > 0)
+            {
+                DVButton.IsEnabled = false;
 
-            UpdateListView();
+                UpdateListView();
 
-            DVButton.IsEnabled = _itemsViewList.Count > 0;
+                DVButton.IsEnabled = _itemsViewList.Count > 0;
+            }
+        }
+
+        private async void Browser_Click(object sender, RoutedEventArgs e)
+        {
+            FileOpenPicker filePicker = new()
+            {
+
+            };
+            IntPtr hwnd = this.GetWindowHandle();
+
+            filePicker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
+            filePicker.FileTypeFilter.Add("*");
+            WinRT.Interop.InitializeWithWindow.Initialize(filePicker, hwnd);
+
+            var file = await filePicker.PickSingleFileAsync();
+
+            if (file == null)
+                return;
+            else
+            {
+                RunAysnc(file.Path);
+            }
         }
     }
 }

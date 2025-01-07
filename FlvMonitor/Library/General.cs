@@ -21,7 +21,7 @@
 
 using System;
 
-namespace FlvToolbox.Toolbox
+namespace FlvMonitor.Toolbox
 {
     internal static class General {
         public static void CopyBytes(byte[] dst, int dstOffset, byte[] src) {
@@ -78,6 +78,35 @@ namespace FlvToolbox.Toolbox
     }
 
     internal static class BitConverterBE {
+        public static ulong ToUInt64(Span<byte> value, int startIndex)
+        {
+            return
+                ((ulong)value[startIndex] << 56) |
+                ((ulong)value[startIndex + 1] << 48) |
+                ((ulong)value[startIndex + 2] << 40) |
+                ((ulong)value[startIndex + 3] << 32) |
+                ((ulong)value[startIndex + 4] << 24) |
+                ((ulong)value[startIndex + 5] << 16) |
+                ((ulong)value[startIndex + 6] <<  8) |
+                ((ulong)value[startIndex + 7]);
+        }
+
+        public static uint ToUInt32(Span<byte> value, int startIndex)
+        {
+            return
+                ((uint)value[startIndex] << 24) |
+                ((uint)value[startIndex + 1] << 16) |
+                ((uint)value[startIndex + 2] <<  8) |
+                ((uint)value[startIndex + 3]);
+        }
+
+        public static ushort ToUInt16(Span<byte> value, int startIndex)
+        {
+            return (ushort)(
+                (value[startIndex] <<  8) |
+                (value[startIndex + 1]));
+        }
+
         public static ulong ToUInt64(byte[] value, int startIndex) {
             return
                 ((ulong)value[startIndex    ] << 56) |

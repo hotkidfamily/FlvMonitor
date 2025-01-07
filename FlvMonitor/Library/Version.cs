@@ -1,10 +1,10 @@
 ﻿using System;
 
-namespace FlvToolbox.Library
+namespace FlvMonitor.Library
 {
     public static class VersionInfo
     {
-        public const string AssemblyVersion = "0.1.0.0";
+        public const string AssemblyVersion = "0.2.0.0";
         public const string CopyrightYears = "2024 ~ 2025";
         public const string Website = "http://github.com/hotkidfamily";
         public const string Authors = "hotkidfamily";

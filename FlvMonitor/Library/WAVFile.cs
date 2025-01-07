@@ -22,7 +22,7 @@
 using System;
 using System.IO;
 
-namespace FlvToolbox.WAVTools {
+namespace FlvMonitor.WAVTools {
     public class WAVWriter {
         private BinaryWriter? _bw;
         private bool _canSeek;

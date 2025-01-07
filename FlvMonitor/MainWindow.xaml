@@ -10,17 +10,33 @@
                 Title="FlvMonitor">
 
     <Grid AllowDrop="True"
-          DragLeave="Grid_DragOver">
+          DragLeave="Grid_DragOver"
+          Name="MainGrid">
         <Grid.Resources>
             <local:ListViewItemOEConverter x:Key="ListViewItemOEConverter" />
             <local:ListViewAVFrameIntervalConverter x:Key="ListViewAVFrameIntervalConverter" />
+            <local:LongToHexConverter x:Key="LongToHexConverter" />
         </Grid.Resources>
         <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
             <RowDefinition Height="48" />
-            <RowDefinition Height="24" />
+            <RowDefinition Height="32" />
             <RowDefinition />
         </Grid.RowDefinitions>
-        <Grid Grid.Row="0"
+        <Border Grid.Row="0"
+                Name="AppTitleBar">
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8">
+                <ImageIcon Source="Assets/mainicon.png"
+                           Height="24"
+                           Margin="4,0,0,0" />
+                <TextBlock Name="AppTitle"
+                           Text="FlvMonitor"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+        <Grid Grid.Row="1"
+              Padding="4"
               Background="LightBlue">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="8*" />
@@ -29,14 +45,42 @@
             <StackPanel Orientation="Horizontal"
                         Spacing="8"
                         VerticalAlignment="Center">
-                <Button Height="36">
-                    <Image Source="Assets/film.png" />
+                <Button Name="Browser"
+                        Click="Browser_Click">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="2*" />
+                            <RowDefinition Height="3*" />
+                        </Grid.RowDefinitions>
+                        <Image Grid.Row="0"
+                               Source="Assets/film.png" />
+                        <TextBlock Grid.Row="1"
+                                   Text="File" />
+                    </Grid>
                 </Button>
-                <Button Height="36">
-                    <Image Source="Assets/url.png" />
+                <Button>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="2*" />
+                            <RowDefinition Height="3*" />
+                        </Grid.RowDefinitions>
+                        <Image Grid.Row="0"
+                               Source="Assets/url.png" />
+                        <TextBlock Grid.Row="1"
+                                   Text="URL" />
+                    </Grid>
                 </Button>
-                <Button Height="36" Name="DVButton">
-                    <Image Source="Assets/i36_dv.png"/>
+                <Button Name="DVButton">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="2*" />
+                            <RowDefinition Height="3*" />
+                        </Grid.RowDefinitions>
+                        <Image Grid.Row="0"
+                               Source="Assets/i36_dv.png" />
+                        <TextBlock Grid.Row="1"
+                                   Text="Bitrate" />
+                    </Grid>
                 </Button>
                 <ComboBox VerticalAlignment="Center"
                           Height="36"
@@ -54,10 +98,10 @@
                          Minimum="0"
                          Maximum="100"
                          Background="AliceBlue"
-                         Foreground="GreenYellow"
+                         Foreground="LightSeaGreen"
                          MinHeight="8" />
         </Grid>
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="5*" />
                 <ColumnDefinition Width="5*" />
@@ -92,7 +136,7 @@
             <TextBlock Grid.Column="9"
                        VerticalAlignment="Center">Image</TextBlock>
         </Grid>
-        <ListView Grid.Row="2"
+        <ListView Grid.Row="3"
                   Name="LVMain"
                   SelectionMode="Single">
             <ListView.ItemTemplate>
@@ -119,7 +163,7 @@
                                    Text="{Binding FrameId}"
                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2"
-                                   Text="{Binding Offset}"
+                                   Text="{Binding Offset, Converter={StaticResource LongToHexConverter}}"
                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="3"
                                    Text="{Binding TagSize}"
@@ -143,9 +187,9 @@
                         <TextBlock Grid.Column="8"
                                    Text="-"
                                    VerticalAlignment="Center" />
-                        <ImageIcon Grid.Column="9"
-                                   Source="{Binding Image}"
-                                   VerticalAlignment="Center" />
+                        <Image Grid.Column="9"
+                               Source="{Binding Image}"
+                               VerticalAlignment="Center" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

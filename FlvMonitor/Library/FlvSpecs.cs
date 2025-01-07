@@ -2,10 +2,10 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using FlvToolbox.Toolbox;
+using FlvMonitor.Toolbox;
 using Windows.Foundation.Metadata;
 
-namespace FlvToolbox.Library
+namespace FlvMonitor.Library
 {
     public static class ByteArrayExtention
     {
@@ -52,9 +52,9 @@ namespace FlvToolbox.Library
     }
     struct VideoTag
     {
-        public string frametype;
-        public string codecID;
-        public string avcPacketType;
+        public uint frametype;
+        public uint codecID;
+        public uint avcPacketType;
         public int compositionTime;
 
         public long NALUs;
@@ -62,11 +62,11 @@ namespace FlvToolbox.Library
     };
     struct AudioTag
     {
-        public string soundFormat;
-        public string soundRate;
-        public string soundSize;
-        public string soundType;
-        public string aacPacketType;
+        public uint soundFormat;
+        public uint soundRate;
+        public uint soundSize;
+        public uint soundType;
+        public uint aacPacketType;
     };
     struct FlvTag
     {
@@ -220,11 +220,11 @@ namespace FlvToolbox.Library
             {
                 if (_fileLength >= 8 && ReadUInt32() == 0x66747970)
                 {
-                    throw new Exception("This is a MP4 file. YAMB or MP4Box can be used to extract streams.");
+                    throw new Exception($"{Path.GetFileName(_fs.Name)} is a MP4 file. YAMB or MP4Box can be used to extract streams.");
                 }
                 else
                 {
-                    throw new Exception("This isn't a FLV file.");
+                    throw new Exception($"{Path.GetFileName(_fs.Name)} isn't a FLV file.");
                 }
             }
 
@@ -338,11 +338,9 @@ namespace FlvToolbox.Library
 
         public bool parseTag(long offset, out FlvTag detail)
         {
-            _fs.Seek(offset, SeekOrigin.Begin);
             detail = new();
 
             uint tagType, dataSize, timeStamp, streamID;
-            byte[] data = null;
 
             if ((_fileLength - _fs.Position) < 11)
             {
@@ -350,13 +348,13 @@ namespace FlvToolbox.Library
             }
 
             detail.addr = _fs.Position;
+            var tag = ReadBytes(11);
 
-            // Read tag header
-            tagType = ReadUInt8();
-            dataSize = ReadUInt24();
-            timeStamp = ReadUInt24();
-            timeStamp |= ReadUInt8() << 24;
-            streamID = ReadUInt24();
+            tagType = tag[0];
+            dataSize = (uint)tag[1] << 16 | (uint)tag[2] << 8 | (uint)tag[3];
+            timeStamp = (uint)tag[4] << 16 | (uint)tag[5] << 8 | (uint)tag[6];
+            timeStamp |= (uint)tag[7] << 24;
+            streamID = (uint)tag[8] << 16 | (uint)tag[9] << 8 | (uint)tag[10];
 
             // Read tag data
             if (dataSize == 0)
@@ -368,20 +366,26 @@ namespace FlvToolbox.Library
                 return false;
             }
 
+            byte[] data = new byte[tag.Length + dataSize];
+            var read_len = ReadBytes(data, tag.Length, (int)dataSize);
+            Array.Copy(tag, data, tag.Length);
+
             if (tagType == 9)
             {
+                Span<byte> videotag = new(data, tag.Length, 5);
                 uint mediaInfo, avcPacketType;
-                mediaInfo = ReadUInt8();
-                uint composition = GetUInt32();
+                mediaInfo = videotag[0];
+                uint composition = (uint)videotag[1] << 24 | (uint)videotag[2] << 16 | (uint)videotag[3] << 8 | (uint)videotag[4];
                 avcPacketType = (composition >> 24) & 0xff;
                 uint tempv = composition & 0x00ffffff;
                 int compositionTime = (Int32)((tempv & 0x00800000) << 8 | (tempv & 0x007fffff));
 
                 uint frametype = (mediaInfo >> 4) & 0x0f;
                 uint codecID = mediaInfo & 0x0f;
-                detail.v.frametype = strVideoTagFrameType(frametype) + "[" + frametype + "]";
-                detail.v.codecID = strVideoCodecID(codecID) + "[" + codecID + "]";
-                detail.v.avcPacketType = strVideoAVCPacketType(avcPacketType) + "[" + avcPacketType + "]";
+
+                detail.v.frametype = frametype;
+                detail.v.codecID = codecID;
+                detail.v.avcPacketType = avcPacketType;
                 detail.v.compositionTime = compositionTime;
 
                 if (_last_video_dts == long.MaxValue)
@@ -393,9 +397,7 @@ namespace FlvToolbox.Library
                     _last_video_pts = timeStamp + compositionTime;
                 }
 
-                Seek(offset);
-                data = ReadBytes((int)dataSize + 11);
-                if(codecID == 7)
+                if (codecID == 7)
                 {
                     parserH264VideoPacket(ref data, ref detail);
                 }
@@ -407,7 +409,8 @@ namespace FlvToolbox.Library
             else if (tagType == 8)
             {
                 uint mediaInfo, format, rate, size, type, pkttype = uint.MaxValue;
-                mediaInfo = ReadUInt8();
+                Span<byte> audiotag = new(data, tag.Length, 2);
+                mediaInfo = audiotag[0];
 
                 format = (mediaInfo >> 4) & 0x0f;
                 rate = (mediaInfo >> 2) & 0x03;
@@ -415,29 +418,30 @@ namespace FlvToolbox.Library
                 type = mediaInfo & 0x01;
                 if(format == 10)
                 {
-                    pkttype = ReadUInt8();
+                    pkttype = audiotag[1];
                 }
 
+                detail.a.soundFormat = format;
+                detail.a.soundRate = rate;
+                detail.a.soundSize = size;
+                detail.a.soundType = type;
+                detail.a.aacPacketType = pkttype;
+
+                /*
                 detail.a.soundFormat = strSoundFormat(format) + "[" + format + "]";
                 detail.a.soundRate = strSoundSampleRate(rate) + "[" + rate + "]";
                 detail.a.soundSize = size == 0? "8bits " : "16bits " + "[" + size + "]";
                 detail.a.soundType = type == 0 ? "Mono " : "Stereo " + "[" + type + "]";
                 detail.a.aacPacketType = pkttype == 0 ? "aac sequence header " : pkttype == 1 ? "aac raw " : " ";
                 detail.a.aacPacketType += "[" + pkttype + "]";
+                */
 
                 if (_last_audio_pts == long.MaxValue)
                 {
                     _last_audio_pts = timeStamp;
                 }
-
-                Seek(offset);
-                data = ReadBytes((int)dataSize + 11);
                 parserAudioPacket(ref data, ref detail);
-            }else{
-                Seek(offset);
-                data = ReadBytes((int)dataSize + 11);
             }
-
 
             uint previousTagSize = ReadUInt32();
             detail.tagType = tagType;
@@ -618,7 +622,7 @@ namespace FlvToolbox.Library
         };
         public static string strAudioTagFrameType(uint type, uint v)
         {
-            string[] types = new string[]
+            string[] types =
             {
                 "AAC sequence header ","AAC raw "
             };
@@ -633,15 +637,15 @@ namespace FlvToolbox.Library
         }
         public static string strSoundSampleRate(uint v)
         {
-            FormatDesc[] descs =
+            FormatDesc[] Descs =
             {
-                new FormatDesc() { v = 0, desc = "5.5 KHz " },
-                new FormatDesc() { v = 1, desc = "11 KHz " },
-                new FormatDesc() { v = 2, desc = "22 KHz " },
-                new FormatDesc() { v = 3, desc = "44 KHz " }
+                new() { v = 0, desc = "5.5 KHz " },
+                new() { v = 1, desc = "11 KHz " },
+                new() { v = 2, desc = "22 KHz " },
+                new() { v = 3, desc = "44 KHz " }
             };
 
-            foreach (FormatDesc desc in descs)
+            foreach (FormatDesc desc in Descs)
             {
                 if (v == desc.v)
                 {
@@ -656,20 +660,20 @@ namespace FlvToolbox.Library
         {
             FormatDesc[] descs =
             {
-                new FormatDesc() { v = 0, desc = "Linear PCM, platform endian " },
-                new FormatDesc() { v = 1, desc = "ADPCM " },
-                new FormatDesc() { v = 2, desc = "MP3 " },
-                new FormatDesc() { v = 3, desc = "Linear PCM, little endian " },
-                new FormatDesc() { v = 4, desc = "Nellymoser 16 kHz mono " },
-                new FormatDesc() { v = 5, desc = "Nellymoser 8 kHz mono " },
-                new FormatDesc() { v = 6, desc = "Nellymoser " },
-                new FormatDesc() { v = 7, desc = "G.711 A-law logarithmic PCM " },
-                new FormatDesc() { v = 8, desc = "G.711 mu-law logarithmic PCM " },
-                new FormatDesc() { v = 9, desc = "reserved " },
-                new FormatDesc() { v = 10, desc = "aac " },
-                new FormatDesc() { v = 11, desc = "Speex " },
-                new FormatDesc() { v = 14, desc = "MP3 8 kHz " },
-                new FormatDesc() { v = 15, desc = "Device-specific sound " }
+                new() { v = 0, desc = "Linear PCM, platform endian " },
+                new() { v = 1, desc = "ADPCM " },
+                new() { v = 2, desc = "MP3 " },
+                new() { v = 3, desc = "Linear PCM, little endian " },
+                new() { v = 4, desc = "Nellymoser 16 kHz mono " },
+                new() { v = 5, desc = "Nellymoser 8 kHz mono " },
+                new() { v = 6, desc = "Nellymoser " },
+                new() { v = 7, desc = "G.711 A-law logarithmic PCM " },
+                new() { v = 8, desc = "G.711 mu-law logarithmic PCM " },
+                new() { v = 9, desc = "reserved " },
+                new() { v = 10, desc = "aac " },
+                new() { v = 11, desc = "Speex " },
+                new() { v = 14, desc = "MP3 8 kHz " },
+                new() { v = 15, desc = "Device-specific sound " }
             };
 
             foreach (FormatDesc desc in descs)
@@ -685,7 +689,7 @@ namespace FlvToolbox.Library
 
         public static string strVideoTagFrameType(uint v)
         {
-            string[] types = new string[]
+            string[] types = 
             {
                 "key frame ",
                 "inter frame ",
@@ -705,7 +709,7 @@ namespace FlvToolbox.Library
 
         public static string strVideoCodecID(uint v)
         {
-            string[] types = new string[]
+            string[] types =
             {
                 "Sorenson H.263 ",
                 "Screen video ",
@@ -731,7 +735,7 @@ namespace FlvToolbox.Library
 
         public static string strVideoAVCPacketType(uint v)
         {
-            string[] types = new string[]
+            string[] types =
             {
                 "sequence header ",
                 "NALU ",
@@ -774,8 +778,8 @@ namespace FlvToolbox.Library
 
         private uint ReadUInt32()
         {
-            byte[] x = new byte[4];
-            _fs.Read(x, 0, 4);
+            Span<byte> x = stackalloc byte[4];
+            _fs.Read(x);
             _fileOffset += 4;
             return BitConverterBE.ToUInt32(x, 0);
         }
@@ -788,10 +792,17 @@ namespace FlvToolbox.Library
             return buff;
         }
 
+        private int ReadBytes(byte[] buff, int offset, int length)
+        {
+            var len = _fs.Read(buff, offset, length);
+            _fileOffset += length;
+            return len;
+        }
+
         private UInt32 GetUInt32()
         {
-            byte[] x = new byte[4];
-            _fs.Read(x, 0, 4);
+            Span<byte> x = stackalloc byte[4];
+            _fs.Read(x);
             _fs.Seek(-4, SeekOrigin.Current);
             return BitConverterBE.ToUInt32(x, 0);
         }

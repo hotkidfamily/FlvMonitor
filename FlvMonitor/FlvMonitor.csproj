@@ -41,7 +41,19 @@
         <PackageReference Include="FFmpeg.AutoGen" Version="7.0.0" />
         <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
         <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.241114003" />
+        <PackageReference Include="SkiaSharp" Version="2.88.9" />
         <PackageReference Include="WinUIEx" Version="2.5.0" />
+    </ItemGroup>
+    <ItemGroup>
+      <Content Update="Assets\mainicon.png">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+    <ItemGroup>
+      <None Update="Assets\mainicon.png">
+        <Pack>True</Pack>
+        <PackagePath>\</PackagePath>
+      </None>
     </ItemGroup>
 
     <!--
@@ -60,5 +72,8 @@
         <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
         <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
         <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+        <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+        <ApplicationIcon>Assets\mainicon.ico</ApplicationIcon>
+        <PackageIcon>mainicon.png</PackageIcon>
     </PropertyGroup>
 </Project>
