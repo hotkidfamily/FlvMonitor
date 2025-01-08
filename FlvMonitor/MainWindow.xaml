@@ -39,10 +39,12 @@
               Padding="4"
               Background="LightBlue">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="8*" />
+                <ColumnDefinition Width="5*" />
+                <ColumnDefinition Width="3*" />
                 <ColumnDefinition Width="2*" />
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal"
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
                         Spacing="8"
                         VerticalAlignment="Center">
                 <Button Name="Browser"
@@ -92,7 +94,20 @@
                     <ComboBoxItem Content="Audio Tags" />
                 </ComboBox>
             </StackPanel>
-            <ProgressBar Grid.Column="1"
+            <Grid Grid.Column="1">
+                <StackPanel Orientation="Horizontal"
+                            Spacing="4">
+                    <ToggleSwitch Name="VideoToggle"
+                                  IsOn="True"
+                                  OffContent="No Image"
+                                  OnContent="Image" />
+                    <ToggleSwitch Name="AVisualToggle"
+                                  IsOn="True"
+                                  OffContent="No Wave"
+                                  OnContent="Audio Wave" />
+                </StackPanel>
+            </Grid>
+            <ProgressBar Grid.Column="2"
                          Name="PBLoading"
                          Margin="4, 0, 4, 0"
                          Minimum="0"

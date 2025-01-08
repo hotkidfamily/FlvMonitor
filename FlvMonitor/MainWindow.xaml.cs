@@ -12,7 +12,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Net.NetworkInformation;
 using System.Threading;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
@@ -337,12 +336,15 @@ namespace FlvMonitor
             FileInfo fi = new(path);
             
             _itemsList.Clear();
+            bool isVideoON = VideoToggle.IsOn;
+            bool isAudioON = AVisualToggle.IsOn;
 
             _statusThread = new Thread(() =>
             {
                 try
                 {
                     double oldp = 0;
+
                     FFmpegDecoder vd = new(_tempPath);
                     FFmpegDecoder ad = new(_tempPath);
 
@@ -352,16 +354,19 @@ namespace FlvMonitor
 
                         if(flv.tagType == 9)
                         {
-                            var d = new Span<byte>(flv.data, 16, flv.data.Length - 16);
-                            if (!vd.Ready && flv.v.avcPacketType == 0)
+                            if (isVideoON)
                             {
-                                AVCodecID ID = FFmpegDecoder.FlvVideoTypeToFFmpeg(flv.v.codecID);
-                                vd.CreateDecoder(ID, d, 64, 64);
-                            }
-                            
-                            {
-                                long pts = flv.timestamp + flv.v.compositionTime;
-                                vd.Decode(d, flv.timestamp, pts);
+                                var d = new Span<byte>(flv.data, 16, flv.data.Length - 16);
+                                if (!vd.Ready && flv.v.avcPacketType == 0)
+                                {
+                                    AVCodecID ID = FFmpegDecoder.FlvVideoTypeToFFmpeg(flv.v.codecID);
+                                    vd.CreateDecoder(ID, d, 64, 64);
+                                }
+
+                                {
+                                    long pts = flv.timestamp + flv.v.compositionTime;
+                                    vd.Decode(d, flv.timestamp, pts);
+                                }
                             }
                         }
 
@@ -369,16 +374,19 @@ namespace FlvMonitor
                         {
                             int audio_tag_len = 11 + (flv.a.soundFormat==10 ? 2 : 1);
                             var d = new Span<byte>(flv.data, audio_tag_len, flv.data.Length - audio_tag_len);
-                            
-                            if (!ad.Ready && flv.a.aacPacketType == 0)
+
+                            if (isAudioON)
                             {
-                                AVCodecID ID = FFmpegDecoder.FlvAudioTypeToFFmpeg(flv.a.soundFormat);
-                                ad.CreateDecoder(ID, d, 72, 36);
-                            }
-                            else
-                            {
-                                long pts = flv.timestamp + flv.v.compositionTime;
-                                ad.Decode(d, flv.timestamp, pts);
+                                if (!ad.Ready && flv.a.aacPacketType == 0)
+                                {
+                                    AVCodecID ID = FFmpegDecoder.FlvAudioTypeToFFmpeg(flv.a.soundFormat);
+                                    ad.CreateDecoder(ID, d, 72, 36);
+                                }
+                                else
+                                {
+                                    long pts = flv.timestamp + flv.v.compositionTime;
+                                    ad.Decode(d, flv.timestamp, pts);
+                                }
                             }
                         }
 
