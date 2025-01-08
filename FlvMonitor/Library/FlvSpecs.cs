@@ -1,50 +1,11 @@
-﻿using System;
+﻿using FlvMonitor.Toolbox;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using FlvMonitor.Toolbox;
-using Windows.Foundation.Metadata;
 
 namespace FlvMonitor.Library
 {
-    public static class ByteArrayExtention
-    {
-        public static IEnumerable<long> FindIndexOf(this byte[] self, byte[] candidate)
-        {
-            if (IsEmptyLocate(self, candidate))
-            {
-                yield break;
-            }
-
-            for (int i = 0; i < self.Length; i++)
-            {
-                if (IsMatch(self, i, candidate))
-                {
-                    yield return i;
-                }
-            }
-        }
-
-        private static bool IsMatch(byte[] array, long position, byte[] candidate)
-        {
-            if (candidate.Length <= array.Length - position)
-            {
-                return !candidate.Where((byte t, int i) => array[position + i] != t).Any();
-            }
-
-            return false;
-        }
-
-        private static bool IsEmptyLocate(byte[] array, byte[] candidate)
-        {
-            if (array != null && candidate != null && array.Length != 0 && candidate.Length != 0)
-            {
-                return candidate.Length > array.Length;
-            }
-
-            return true;
-        }
-    }
     class NaluDetail
     {
         public string type;
@@ -533,8 +494,21 @@ namespace FlvMonitor.Library
 
             if (_hevc_in_annexb) // annexb format
             {
-                byte[] ss = [0, 0, 1];
-                var indexs = data.FindIndexOf(ss);
+                Span<byte> v = new(data);
+                List<int> indexs = [];
+                for(var i = 2; i< v.Length; i++)
+                {
+                    if (v[i] == 1)
+                    {
+                        if ((v[i-1] == 0) && (v[i-2] == 0))
+                        {
+                            indexs.Add(i-2);
+                            i+=2;
+                            continue;
+                        }
+                    }
+                }
+
                 nalus = indexs.Count(); ;
                 detail.v.NaluDetails = new NaluDetail[nalus];
                 int j = 0;
