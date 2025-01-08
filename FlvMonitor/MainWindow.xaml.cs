@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Threading;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
@@ -177,7 +178,7 @@ namespace FlvMonitor
                         }
 
                         it.AptsD = flv.timestamp - last_audio_pts;
-
+                        it.Image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
                         last_audio_pts = flv.timestamp;
                     }
                     else if (flv.tagType == 9)
@@ -269,7 +270,7 @@ namespace FlvMonitor
                         last_video_pts = pts;
 
                         it.Image = Path.Join(_tempPath, $"{pts}.png");
-                        //it.PTS = $"{TimeSpan.FromMilliseconds(flv.timestamp).ToString(format)} / {pts}";
+
                         _itemsViewList.Add(it);
                     }
                     var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
@@ -312,7 +313,7 @@ namespace FlvMonitor
                         it.AptsD = flv.timestamp - last_audio_pts;
 
                         last_audio_pts = flv.timestamp;
-
+                        it.Image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
                         _itemsViewList.Add(it);
                     }
                     var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
@@ -343,7 +344,7 @@ namespace FlvMonitor
                 {
                     double oldp = 0;
                     FFmpegDecoder vd = new(_tempPath);
-                    //FFmpegDecoder ad = new(_tempPath);
+                    FFmpegDecoder ad = new(_tempPath);
 
                     foreach (var flv in _extraAction(path))
                     {
@@ -368,18 +369,17 @@ namespace FlvMonitor
                         {
                             int audio_tag_len = 11 + (flv.a.soundFormat==10 ? 2 : 1);
                             var d = new Span<byte>(flv.data, audio_tag_len, flv.data.Length - audio_tag_len);
-                            /*
+                            
                             if (!ad.Ready && flv.a.aacPacketType == 0)
                             {
                                 AVCodecID ID = FFmpegDecoder.FlvAudioTypeToFFmpeg(flv.a.soundFormat);
-                                ad.CreateDecoder(ID, d, 64, -1);
+                                ad.CreateDecoder(ID, d, 72, 36);
                             }
                             else
                             {
                                 long pts = flv.timestamp + flv.v.compositionTime;
                                 ad.Decode(d, flv.timestamp, pts);
                             }
-                            */
                         }
 
                         var newp = (flv.addr * 100 / fi.Length + 0.5);
@@ -395,12 +395,12 @@ namespace FlvMonitor
                     {
                         vd.FreeCodec();
                     }
-                    /*
+                    
                     if (ad.Ready)
                     {
                         ad.FreeCodec();
                     }
-                    */
+                    
                     _queue.TryEnqueue(() =>
                     {
                         PBLoading.Value = 100;
