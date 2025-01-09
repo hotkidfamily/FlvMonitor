@@ -98,7 +98,7 @@
                 <StackPanel Orientation="Horizontal"
                             Spacing="4">
                     <ToggleSwitch Name="VideoToggle"
-                                  IsOn="True"
+                                  IsOn="False"
                                   OffContent="No Image"
                                   OnContent="Image" />
                     <ToggleSwitch Name="AVisualToggle"

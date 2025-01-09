@@ -116,7 +116,6 @@ namespace FlvMonitor
             this.ExtendsContentIntoTitleBar = true;
             this.SetTitleBar(AppTitleBar);
 
-            FFmpegBinariesHelper.RegisterFFmpegBinaries();
             _tempPath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp\\FlvMonitor");
 
             if (!Path.Exists(_tempPath))
@@ -338,6 +337,23 @@ namespace FlvMonitor
             _itemsList.Clear();
             bool isVideoON = VideoToggle.IsOn;
             bool isAudioON = AVisualToggle.IsOn;
+
+            if (isVideoON || isAudioON)
+            {
+                FFmpegBinariesHelper.RegisterFFmpegBinaries();
+
+                try
+                {
+                    ffmpeg.av_version_info();
+                }
+                catch (Exception)
+                {
+                    isVideoON = false;
+                    isAudioON = false;
+                    VideoToggle.IsOn = false;
+                    AVisualToggle.IsOn = false;
+                }
+            }
 
             _statusThread = new Thread(() =>
             {

@@ -1,11 +1,13 @@
 ﻿using FFmpeg.AutoGen;
 using FFmpeg.AutoGen.Example;
+using Microsoft.UI.Xaml.Controls;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using Windows.Foundation.Collections;
 
 namespace FlvMonitor.Library
 {
@@ -123,7 +125,7 @@ namespace FlvMonitor.Library
             public byte** dst_data = null;
             public long dst_data_capcity = 0;
             public long dst_data_linesize = 0;
-            public int swr_dst_channels = 1;
+            public int swr_dst_nb_channels = 1;
             public int swr_dst_sample_fmt = (int)AVSampleFormat.AV_SAMPLE_FMT_S16;
             public int swr_dst_sample_rate = 48000;
 
@@ -165,6 +167,14 @@ namespace FlvMonitor.Library
                 cc->extradata_size = extradata.Length;
                 fixed (byte* ptr = extradata)
                     MoveMemory((IntPtr)cc->extradata, (IntPtr)ptr, extradata.Length);
+                if((codec->capabilities & ffmpeg.AV_CODEC_CAP_SLICE_THREADS) != 0)
+                {
+                    cc->thread_type |= ffmpeg.FF_THREAD_SLICE;
+                }
+                if ((codec->capabilities & ffmpeg.AV_CODEC_CAP_FRAME_THREADS) != 0)
+                {
+                    cc->thread_type |= ffmpeg.FF_THREAD_FRAME;
+                }
 
                 /* open it */
                 if ((ret = ffmpeg.avcodec_open2(cc, codec, null)) < 0)
@@ -332,146 +342,117 @@ namespace FlvMonitor.Library
                     ffmpeg.sws_scale(_context.Scale, frame->data, frame->linesize, 0, frame->height,
                     rgb->data, rgb->linesize);
 
-                    SKBitmap bp = new(rgb->width, rgb->height, SKColorType.Rgba8888, SKAlphaType.Opaque);
-                    var info = new SKImageInfo(rgb->width, rgb->height, SKColorType.Rgba8888, SKAlphaType.Premul);
-                    bp.InstallPixels(info, (IntPtr)rgb->data[0], rgb->width * 4);
                     string op = Path.Join(_tempPath, $"{frame->pts}.png");
-                    using (var ss = File.OpenWrite(op))
-                    {
-                        bp.Encode(ss, SKEncodedImageFormat.Png, 100);
-                    }
+                    BitmapTool.SaveToBitmap(rgb->width, rgb->height, (IntPtr)rgb->data[0], rgb->linesize[0], op);
                 }
             }
             return true;
         }
+        
 
+        private List<short> _sampleMeanfullValue(byte** dst_data, int data_len, int width)
+        {
+            int step = (int)Math.Floor(data_len*1.0/width);
+            List<short> values = [];
+            short* addr = (short*)dst_data[0];
+            var v = addr;
+            int calcedLen = 0;
 
-        private unsafe bool CalcVoicePower(AVFrame* frame)
+            for (var i = 0; i < width - 1; i++)
+            {
+                v = addr + i * step;
+                var meanValue = VoiceAlgo.CalclSamplesMeanPower(v, step);
+                values.Add(meanValue);
+                calcedLen += step;
+            }
+
+            var unCalcLen = data_len - calcedLen;
+            var extremaValue = VoiceAlgo.CalclSamplesMeanPower(v, unCalcLen);
+            values.Add(extremaValue);
+
+            return values;
+        }
+
+        private bool CalcVoicePower(AVFrame* frame)
         {
             AVCodecContext* cc = _context.CodecContext;
 
-            int channels = cc->codec->ch_layouts->nb_channels;
-            int bytesPerSample = ffmpeg.av_get_bytes_per_sample(cc->sample_fmt);
+            int src_nb_channels = cc->codec->ch_layouts->nb_channels;
             int src_sample_rate = cc->sample_rate;
+
             int dst_sample_rate = _context.swr_dst_sample_rate;
-
+            int dst_nb_channels = (int)_context.swr_dst_nb_channels;
             var dst_sample_fmt = (AVSampleFormat)_context.swr_dst_sample_fmt;
+            int ret = 0;
 
-            if (frame->format != _context.swr_dst_sample_fmt)
+            if (_context.SwrContext == null)
             {
-                int ret = 0;
-                if (_context.SwrContext == null)
+                SwrContext* swr_ctx = null;
+                AVChannelLayout dst_ch_layout = new();
+                ffmpeg.av_channel_layout_default(&dst_ch_layout, dst_nb_channels);
+                ret = ffmpeg.swr_alloc_set_opts2(&swr_ctx,
+                            &dst_ch_layout,
+                            dst_sample_fmt,
+                            dst_sample_rate,
+                            cc->codec->ch_layouts,
+                                (AVSampleFormat)frame->format,
+                            src_sample_rate,
+                            0,
+                            null);
+                if ((ret < 0) || (ret = ffmpeg.swr_init(swr_ctx))<0)
                 {
-                    SwrContext* swr_ctx = ffmpeg.swr_alloc();
+                    Debugger.Log(0, "s", "Could not init swr\n");
+                    return false;
+                }
 
-                    /* set options */
-                    ffmpeg.av_opt_set_chlayout(swr_ctx, "in_chlayout", cc->codec->ch_layouts, 0);
-                    ffmpeg.av_opt_set_int(swr_ctx, "in_sample_rate", src_sample_rate, 0);
-                    ffmpeg.av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", (AVSampleFormat)frame->format, 0);
+                byte** dst_data;
+                int dst_linesize;
+                long dst_nb_samples = ffmpeg.av_rescale_rnd(frame->nb_samples, dst_sample_rate, src_sample_rate, AVRounding.AV_ROUND_UP);
+                if ((ret = ffmpeg.av_samples_alloc_array_and_samples(&dst_data,
+                    &dst_linesize, src_nb_channels, (int)dst_nb_samples, dst_sample_fmt, 0)) < 0)
+                {
+                    Debugger.Log(0, "s", "Could not alloc resample dest buffer\n");
+                    return false;
+                }
 
-                    ffmpeg.av_opt_set_chlayout(swr_ctx, "out_chlayout", cc->codec->ch_layouts, 0);
-                    ffmpeg.av_opt_set_int(swr_ctx, "out_sample_rate", dst_sample_rate, 0);
-                    ffmpeg.av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", dst_sample_fmt, 0);
+                _context.dst_data_capcity = dst_nb_samples;
+                _context.dst_data_linesize = dst_linesize;
+                _context.dst_data = dst_data;
+                _context.SwrContext = swr_ctx;
+            }
 
-                    ret = ffmpeg.swr_init(swr_ctx);
+            if (_context.SwrContext != null)
+            {
+                byte** dst_data = _context.dst_data;
+                int dst_linesize = (int)_context.dst_data_linesize;
+
+                int dst_nb_samples = (int)ffmpeg.av_rescale_rnd(
+                    ffmpeg.swr_get_delay(_context.SwrContext, src_sample_rate) + frame->nb_samples, 
+                    dst_sample_rate, src_sample_rate, AVRounding.AV_ROUND_UP);
+                if (dst_nb_samples > _context.dst_data_capcity)
+                {
+                    ffmpeg.av_freep(_context.dst_data);
+                    ret = ffmpeg.av_samples_alloc(dst_data, &dst_linesize, src_nb_channels, dst_nb_samples, dst_sample_fmt, 1);
                     if (ret < 0)
-                    {
-                        Debugger.Log(0, "s", "Could not init swr\n");
-                        return false;
-                    }
-
-                    byte** dst_data;
-                    int dst_linesize;
-                    long dst_nb_samples = ffmpeg.av_rescale_rnd(frame->nb_samples, dst_sample_rate, src_sample_rate, AVRounding.AV_ROUND_UP);
-                    if ((ret = ffmpeg.av_samples_alloc_array_and_samples(&dst_data,
-                        &dst_linesize, channels, (int)dst_nb_samples, dst_sample_fmt, 0)) < 0)
                     {
                         Debugger.Log(0, "s", "Could not alloc resample dest buffer\n");
                         return false;
                     }
 
                     _context.dst_data_capcity = dst_nb_samples;
-                    _context.dst_data_linesize = dst_linesize;
-                    _context.dst_data = dst_data;
-                    _context.SwrContext = swr_ctx;
                 }
 
-                if(_context.SwrContext != null)
+                ret = ffmpeg.swr_convert(_context.SwrContext, dst_data, (int)dst_nb_samples,
+                    (byte**)&frame->data, frame->nb_samples);
+
+                if(ret > 0)
                 {
-                    byte** dst_data = _context.dst_data;
-                    int dst_linesize = (int)_context.dst_data_linesize;
+                    var width = _context.width * 2;
+                    var height = _context.height;
 
-                    int dst_nb_samples = (int)ffmpeg.av_rescale_rnd(
-                        ffmpeg.swr_get_delay(_context.SwrContext, src_sample_rate) + frame->nb_samples, 
-                        dst_sample_rate, src_sample_rate, AVRounding.AV_ROUND_UP);
-                    if (dst_nb_samples > _context.dst_data_capcity)
-                    {
-                        ffmpeg.av_freep(_context.dst_data);
-                        ret = ffmpeg.av_samples_alloc(dst_data, &dst_linesize, channels, dst_nb_samples, dst_sample_fmt, 1);
-                        if (ret < 0)
-                        {
-                            Debugger.Log(0, "s", "Could not alloc resample dest buffer\n");
-                        }
-
-                        _context.dst_data_capcity = dst_nb_samples;
-                    }
-
-                    ret = ffmpeg.swr_convert(_context.SwrContext, dst_data, (int)dst_nb_samples,
-                        (byte**)&frame->data, frame->nb_samples);
-
-                    var dst_bufsize = ffmpeg.av_samples_get_buffer_size(&dst_linesize, channels, ret, dst_sample_fmt, 1);
-                    if (dst_bufsize < 0)
-                    {
-                        Debugger.Log(0, "s", "Could not get sample buffer size\n");
-                    }
-
-                    int step = (int) Math.Ceiling(dst_nb_samples * 1.0 / _context.width);
-                    List<short> values = [];
-                    short* addr = (short*)dst_data[0];
-                    var v = addr;
-                    for (var i = 0; i<dst_nb_samples;)
-                    {
-                        v = addr + i;
-                        //short max = short.MinValue, min = short.MaxValue;
-                        //for (var j = 0; j < step; j++)
-                        //{
-                        //    v += j;
-                        //    max = Math.Max(*v, max);
-                        //    min = Math.Min(*v, min);
-                        //}
-                        //values.Add(Math.Abs(max) > Math.Abs(min) ? max : min);
-                        long sum = 0;
-                        for (var j = 0; j < step; j++)
-                        {
-                            sum += *(v+j);
-                        }
-                        values.Add((short)(sum/step));
-
-                        i += step;
-                    }
-
-                    int height = _context.height;
-                    int width = _context.width;
-                    int pixel_step = (int)ushort.MaxValue/height;
-                    SKBitmap bp = new(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
-                    bp.Erase(SKColors.DarkGreen);
-                    var info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
-                    List<int> ys = [];
-                    foreach(var v2 in values)
-                    {
-                        int y = height - (v2 + short.MaxValue) / pixel_step;
-                        ys.Add(y);
-                    }
-                    for (var i = 0; i<ys.Count; i++)
-                    {
-                        bp.SetPixel(i, ys[i], SKColors.SpringGreen);
-                    }
-
+                    var values = _sampleMeanfullValue(dst_data, ret, width);
                     string op = Path.Join(_tempPath, $"audio_{frame->pts}.png");
-                    using (var ss = File.OpenWrite(op))
-                    {
-                        bp.Encode(ss, SKEncodedImageFormat.Png, 100);
-                    }
+                    BitmapTool.CreateVoiceBitmap(ref values, width, height, op);
                 }
             }
 
@@ -517,7 +498,7 @@ namespace FlvMonitor.Library
             return true;
         }
 
-        public unsafe bool Decode(Span<byte> data, long dts, long pts)
+        public  bool Decode(Span<byte> data, long dts, long pts)
         {
             AVCodecContext* cc = _context.CodecContext;
             AVBSFContext* bsf = _context.FilterCtx;
