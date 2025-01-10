@@ -32,7 +32,7 @@ namespace FlvMonitor.Library
             List<int> ys = [];
             foreach (var v2 in values)
             {
-                int y = Math.Clamp(height - (v2 + short.MaxValue) / pixel_step, 0, 35);
+                int y = Math.Clamp(height - (v2 + short.MaxValue) / pixel_step, 0, height-1);
                 ys.Add(y);
             }
             for (var i = 0; i<ys.Count; i++)
