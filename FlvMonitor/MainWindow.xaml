@@ -60,7 +60,7 @@
                                    Text="File" />
                     </Grid>
                 </Button>
-                <Button>
+                <Button Name="Stream" Click="Stream_Click">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="2*" />
@@ -107,14 +107,9 @@
                                   OnContent="Audio Wave" />
                 </StackPanel>
             </Grid>
-            <ProgressBar Grid.Column="2"
-                         Name="PBLoading"
-                         Margin="4, 0, 4, 0"
-                         Minimum="0"
-                         Maximum="100"
-                         Background="AliceBlue"
-                         Foreground="LightSeaGreen"
-                         MinHeight="8" />
+            <ContentPresenter Grid.Column="2"
+                              Name="Progress">
+            </ContentPresenter>
         </Grid>
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>

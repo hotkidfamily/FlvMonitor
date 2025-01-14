@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
@@ -72,17 +73,17 @@ namespace FlvMonitor
 
     public class ParseListViewItem
     {
-        public string TagType { get; set; }
+        public string TagType { get; set; } = "unknow";
         public int FrameId { get; set; }
         public long Offset { get; set; }
         public uint TagSize { get; set; }
-        public string NalType { get; set; }
-        public string CodecId { get; set; }
-        public string PTS { get; set; }
+        public string NalType { get; set; } = "unknow";
+        public string CodecId { get; set; } = "unknow";
+        public string PTS { get; set; } = "unknow";
         public long VdtsD { get; set; }
         public long VptsD { get; set; }
         public long AptsD { get; set; }
-        public string Image{ get; set; }
+        public string Image { get; set; } = "unknow";
     }
 
     /// <summary>
@@ -124,7 +125,7 @@ namespace FlvMonitor
             }
         }
 
-        private IEnumerable<FlvTag> _extraAction(string path)
+        private IEnumerable<FlvTag> _extraAction(string path, bool pathIsUrl=false)
         {
             ObservableCollection<ParseListViewItem> lvItems = [];
             FlvSpecs parser = new(path);
@@ -220,12 +221,12 @@ namespace FlvMonitor
                         it.TagType = $"📄{flv.tagType}";
                     }
                     _itemsViewList.Add(it);
-                    var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
-                    var oldp = PBLoading.Value;
-                    if (oldp != newp)
-                    {
-                        PBLoading.Value = newp;
-                    }
+                    //var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
+                    //var oldp = PBLoading.Value;
+                    //if (oldp != newp)
+                    //{
+                    //    PBLoading.Value = newp;
+                    //}
                 }
             }
             else if (TagTypes == 1)
@@ -271,12 +272,12 @@ namespace FlvMonitor
 
                         _itemsViewList.Add(it);
                     }
-                    var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
-                    var oldp = PBLoading.Value;
-                    if (oldp != newp)
-                    {
-                        PBLoading.Value = newp;
-                    }
+                    //var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
+                    //var oldp = PBLoading.Value;
+                    //if (oldp != newp)
+                    //{
+                    //    PBLoading.Value = newp;
+                    //}
                 }
             }
             else if (TagTypes == 2)
@@ -314,29 +315,27 @@ namespace FlvMonitor
                         it.Image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
                         _itemsViewList.Add(it);
                     }
-                    var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
-                    var oldp = PBLoading.Value;
-                    if (oldp != newp)
-                    {
-                        PBLoading.Value = newp;
-                    }
+                    //var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
+                    //var oldp = PBLoading.Value;
+                    //if (oldp != newp)
+                    //{
+                    //    PBLoading.Value = newp;
+                    //}
                 }
             }
 
-            PBLoading.Value = 100;
+            //PBLoading.Value = 100;
             if (LVMain != null && _itemsList.Count > 0)
             {
                 LVMain.ItemsSource = _itemsViewList;
             }
         }
 
-        private void RunAysnc(string path)
+        private void RunAysnc(string path, bool isVideoON, bool isAudioON, bool sourceIsUrl=false)
         {
             FileInfo fi = new(path);
             
             _itemsList.Clear();
-            bool isVideoON = VideoToggle.IsOn;
-            bool isAudioON = AVisualToggle.IsOn;
 
             if (isVideoON || isAudioON)
             {
@@ -350,10 +349,12 @@ namespace FlvMonitor
                 {
                     isVideoON = false;
                     isAudioON = false;
-                    VideoToggle.IsOn = false;
-                    AVisualToggle.IsOn = false;
+                    //VideoToggle.IsOn = false;
+                    //AVisualToggle.IsOn = false;
                 }
             }
+
+           
 
             _statusThread = new Thread(() =>
             {
@@ -364,7 +365,11 @@ namespace FlvMonitor
                     FFmpegDecoder vd = new(_tempPath);
                     FFmpegDecoder ad = new(_tempPath);
 
-                    foreach (var flv in _extraAction(path))
+                    while (!File.Exists(path)) {
+                        Thread.Sleep(100);
+                    }
+
+                    foreach (var flv in _extraAction(path, sourceIsUrl))
                     {
                         _itemsList.Add(flv);
 
@@ -411,7 +416,8 @@ namespace FlvMonitor
                         {
                             _queue.TryEnqueue(() =>
                             {
-                                PBLoading.Value = newp;
+                                if(Progress.Content is ProgressBar bar)
+                                    bar.Value = newp;
                             });
                         }
                     }
@@ -427,7 +433,71 @@ namespace FlvMonitor
                     
                     _queue.TryEnqueue(() =>
                     {
-                        PBLoading.Value = 100;
+                        if (Progress.Content is ProgressBar bar)
+                            bar.Value = 100;
+
+                        DVButton.IsEnabled = false;
+
+                        UpdateListView();
+
+                        DVButton.IsEnabled = _itemsViewList.Count > 0;
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _queue.TryEnqueue(() =>
+                    {
+                        _contentDialog.XamlRoot = MainGrid.XamlRoot;
+                        _contentDialog.Content = ex.Message;
+                        _contentDialog.Title = "Error";
+                        _contentDialog.CloseButtonText = "OK";
+                        _ = _contentDialog.ShowAsync();
+                    });
+                }
+            });
+
+            _statusThread.Start();
+        }
+
+
+        private void RunUrlAysnc(string urlpath, bool isVideON, bool isAudioON, bool sourceIsUrl = true)
+        {
+            _statusThread = new Thread( async () =>
+            {
+                try
+                {
+                    using (HttpClient client = new())
+                    {
+                        try
+                        {
+                            HttpResponseMessage response = await client.GetAsync(urlpath, HttpCompletionOption.ResponseHeadersRead);
+                            response.EnsureSuccessStatusCode();
+
+                            using (Stream stream = await response.Content.ReadAsStreamAsync())
+                            {
+                                string filepath = Path.Combine(_tempPath, "live-stream.flv");
+                                using (FileStream fileStream = new(filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                                {
+                                    byte[] buffer = new byte[8192];
+                                    int bytesRead;
+
+                                    while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                                    {
+                                        await fileStream.WriteAsync(buffer, 0, bytesRead);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"发生错误: {ex.Message}");
+                        }
+                    }
+
+                    _queue.TryEnqueue(() =>
+                    {
+                        if (Progress.Content is ProgressRing ring)
+                            ring.IsActive = false;
 
                         DVButton.IsEnabled = false;
 
@@ -455,6 +525,8 @@ namespace FlvMonitor
         private async void Grid_DragOver(object sender, DragEventArgs e)
         {
             e.Handled = true;
+            bool isVideoON = VideoToggle.IsOn;
+            bool isAudioON = AVisualToggle.IsOn;
 
             if (e.DataView.Contains(StandardDataFormats.StorageItems))
             {
@@ -465,7 +537,23 @@ namespace FlvMonitor
                 }
 
                 var path = files[0].Path;
-                RunAysnc(path);
+                if (Path.Exists(path))
+                {
+                    ProgressBar bar = new()
+                    {
+                        Minimum = 0,
+                        Maximum = 100,
+                        Background = new SolidColorBrush(Colors.AliceBlue),
+                        Foreground  = new SolidColorBrush(Colors.LightSeaGreen),
+                        MinHeight = 8,
+                        Name ="PBLoading",
+                        Margin= new Thickness(4, 0, 4, 0)
+                    };
+
+                    Progress.Content = bar;
+
+                    RunAysnc(path, isVideoON, isAudioON);
+                }
             }
         }
 
@@ -485,21 +573,85 @@ namespace FlvMonitor
         {
             FileOpenPicker filePicker = new()
             {
-
+                SuggestedStartLocation = PickerLocationId.PicturesLibrary
             };
+
             IntPtr hwnd = this.GetWindowHandle();
 
-            filePicker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
             filePicker.FileTypeFilter.Add("*");
             WinRT.Interop.InitializeWithWindow.Initialize(filePicker, hwnd);
 
             var file = await filePicker.PickSingleFileAsync();
 
+            bool isVideoON = VideoToggle.IsOn;
+            bool isAudioON = AVisualToggle.IsOn;
+
             if (file == null)
                 return;
             else
             {
-                RunAysnc(file.Path);
+                ProgressBar bar = new()
+                {
+                    Minimum = 0,
+                    Maximum = 100,
+                    Background = new SolidColorBrush(Colors.AliceBlue),
+                    Foreground  = new SolidColorBrush(Colors.LightSeaGreen),
+                    MinHeight = 8,
+                    Name ="PBLoading",
+                    Margin= new Thickness(4, 0, 4, 0)
+                };
+
+                Progress.Content = bar;
+
+                RunAysnc(file.Path, isVideoON, isAudioON);
+            }
+        }
+
+        private async void Stream_Click(object sender, RoutedEventArgs e)
+        {
+            string urlpath = "";
+            {
+                var baseWidth = MainGrid.ActualWidth;
+                TextBox urlTextBox = new()
+                {
+                    PlaceholderText = "请输入 URL",
+                    MinWidth = baseWidth - 200
+                };
+
+                var dialog = new ContentDialog
+                {
+                    Title = "输入 URL",
+                    PrimaryButtonText = "确认",
+                    SecondaryButtonText = "取消",
+                    XamlRoot = MainGrid.XamlRoot,
+                    Content = urlTextBox,
+                    MinWidth = baseWidth - 100
+                };
+
+                ContentDialogResult result = await dialog.ShowAsync();
+
+                // 确认按钮被点击
+                if (result == ContentDialogResult.Primary)
+                {
+                    urlpath = urlTextBox.Text;
+                }
+            }
+
+            bool isVideoON = VideoToggle.IsOn;
+            bool isAudioON = AVisualToggle.IsOn;
+
+            if (urlpath.StartsWith("http://"))
+            {
+                ProgressRing ring = new()
+                {
+                    Background = new SolidColorBrush(Colors.AliceBlue),
+                    Foreground  = new SolidColorBrush(Colors.LightSeaGreen),
+                };
+
+                Progress.Content = ring;
+                ring.IsActive = true;
+
+                RunUrlAysnc(urlpath, isVideoON, isAudioON);
             }
         }
     }
