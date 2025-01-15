@@ -19,9 +19,9 @@
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
-            <RowDefinition Height="48" />
+            <RowDefinition Height="96" />
             <RowDefinition Height="32" />
-            <RowDefinition />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Border Grid.Row="0"
                 Name="AppTitleBar">
@@ -38,80 +38,112 @@
         <Grid Grid.Row="1"
               Padding="4"
               Background="LightBlue">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="5*" />
-                <ColumnDefinition Width="3*" />
-                <ColumnDefinition Width="2*" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0"
-                        Orientation="Horizontal"
-                        Spacing="8"
-                        VerticalAlignment="Center">
-                <Button Name="Browser"
-                        Click="Browser_Click">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="2*" />
-                            <RowDefinition Height="3*" />
-                        </Grid.RowDefinitions>
-                        <Image Grid.Row="0"
-                               Source="Assets/film.png" />
-                        <TextBlock Grid.Row="1"
-                                   Text="File" />
-                    </Grid>
-                </Button>
-                <Button Name="Stream" Click="Stream_Click">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="2*" />
-                            <RowDefinition Height="3*" />
-                        </Grid.RowDefinitions>
-                        <Image Grid.Row="0"
-                               Source="Assets/url.png" />
-                        <TextBlock Grid.Row="1"
-                                   Text="URL" />
-                    </Grid>
-                </Button>
-                <Button Name="DVButton">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="2*" />
-                            <RowDefinition Height="3*" />
-                        </Grid.RowDefinitions>
-                        <Image Grid.Row="0"
-                               Source="Assets/i36_dv.png" />
-                        <TextBlock Grid.Row="1"
-                                   Text="Bitrate" />
-                    </Grid>
-                </Button>
-                <ComboBox VerticalAlignment="Center"
-                          Height="36"
-                          Name="TagComboBox"
-                          SelectionChanged="TagComboBox_SelectionChanged">
-                    <ComboBoxItem Content="All Tags"
-                                  IsSelected="True" />
-                    <ComboBoxItem Content="Video Tags" />
-                    <ComboBoxItem Content="Audio Tags" />
-                </ComboBox>
-            </StackPanel>
-            <Grid Grid.Column="1">
-                <StackPanel Orientation="Horizontal"
-                            Spacing="4">
-                    <ToggleSwitch Name="VideoToggle"
-                                  IsOn="False"
-                                  OffContent="No Image"
-                                  OnContent="Image" />
-                    <ToggleSwitch Name="AVisualToggle"
-                                  IsOn="True"
-                                  OffContent="No Wave"
-                                  OnContent="Audio Wave" />
+            <Grid.RowDefinitions>
+                <RowDefinition Height="4*" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="6*" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="5*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="3*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Name="UrlTextBox" PlaceholderText="Please input URL for downloading" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Stretch">
+                    <Button Name="Download"
+                            Click="Stream_Click"
+                            Height="36">
+                        Download
+                    </Button>
+                    <TextBlock Name="DownloadStatics"
+                               Text="{Binding TotalDownloadBytes,Mode=OneWay}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Bytes"
+                               VerticalAlignment="Center" />
                 </StackPanel>
+                <ProgressBar Grid.Column="2"
+                             Name="ProgressDownload"
+                             IsIndeterminate="False">
+                </ProgressBar>
             </Grid>
-            <ContentPresenter Grid.Column="2"
-                              Name="Progress">
-            </ContentPresenter>
+            <Border Grid.Row="1"
+                    BorderBrush="DarkGreen"
+                    BorderThickness="1"
+                    Height="2"></Border>
+            <Grid Grid.Row="2"
+                  Padding="4"
+                  Background="LightBlue">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="5*" />
+                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="2*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center">
+                    <Button Name="Browser"
+                            Click="Browser_Click">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" />
+                                <RowDefinition Height="3*" />
+                            </Grid.RowDefinitions>
+                            <Image Grid.Row="0"
+                                   Source="Assets/film.png" />
+                            <TextBlock Grid.Row="1"
+                                       Text="File" />
+                        </Grid>
+                    </Button>
+                    <Button Name="DVButton">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" />
+                                <RowDefinition Height="3*" />
+                            </Grid.RowDefinitions>
+                            <Image Grid.Row="0"
+                                   Source="Assets/i36_dv.png" />
+                            <TextBlock Grid.Row="1"
+                                       Text="Bitrate" />
+                        </Grid>
+                    </Button>
+                    <ComboBox VerticalAlignment="Center"
+                              Height="36"
+                              Name="TagComboBox"
+                              SelectionChanged="TagComboBox_SelectionChanged">
+                        <ComboBoxItem Content="All Tags"
+                                      IsSelected="True" />
+                        <ComboBoxItem Content="Video Tags" />
+                        <ComboBoxItem Content="Audio Tags" />
+                    </ComboBox>
+                </StackPanel>
+                <Grid Grid.Column="1">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="4">
+                        <ToggleSwitch Name="VideoToggle"
+                                      IsOn="False"
+                                      OffContent="No Image"
+                                      OnContent="Image" />
+                        <ToggleSwitch Name="AVisualToggle"
+                                      IsOn="True"
+                                      OffContent="No Wave"
+                                      OnContent="Audio Wave" />
+                    </StackPanel>
+                </Grid>
+                <ProgressBar Grid.Column="2"
+                             Name="Progress"
+                             Minimum="0"
+                             Maximum="100"
+                             Background="AliceBlue"
+                             Foreground="LightSeaGreen"
+                             MinHeight="8">
+                </ProgressBar>
+            </Grid>
         </Grid>
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" Background="LightCoral">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="5*" />
                 <ColumnDefinition Width="5*" />

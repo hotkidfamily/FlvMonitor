@@ -10,9 +10,11 @@ using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
@@ -89,7 +91,7 @@ namespace FlvMonitor
     /// <summary>
     /// An empty window that can be used on its own or navigated to within a Frame.
     /// </summary>
-    public sealed partial class MainWindow : WindowEx
+    public sealed partial class MainWindow : WindowEx, INotifyPropertyChanged
     {
         private Thread? _statusThread;
         private DispatcherQueue _queue;
@@ -97,6 +99,33 @@ namespace FlvMonitor
         private List<FlvTag> _itemsList = [];
         private ContentDialog _contentDialog;
         private string _tempPath = default!;
+
+        private long _totalDownloadBytes = 0;
+
+        public long TotalDownloadBytes
+        {
+            get { return _totalDownloadBytes; }
+            set { if (_totalDownloadBytes != value)
+                {
+                    _totalDownloadBytes = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        // Using a DependencyProperty as the backing store for DownloadBytes.  This enables animation, styling, binding, etc...
+        public static readonly DependencyProperty DownloadBytesProperty =
+            DependencyProperty.Register("TotalDownloadBytes", typeof(long), typeof(MainWindow), new PropertyMetadata(0));
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged([CallerMemberName] string propertyName = "")
+        {
+            if (PropertyChanged != null)
+            {
+                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+            }
+        }
 
         public MainWindow()
         {
@@ -108,7 +137,7 @@ namespace FlvMonitor
             this.MaxWidth = 1920;
             this.MaxHeight = 1080;
             this.Move(640, 1280);
-
+            
             _queue = DispatcherQueue.GetForCurrentThread();
             AppTitle.Text = $"FlvMonitor {VersionInfo.DisplayVersion}";
             DVButton.IsEnabled = _itemsViewList.Count > 0;
@@ -416,8 +445,7 @@ namespace FlvMonitor
                         {
                             _queue.TryEnqueue(() =>
                             {
-                                if(Progress.Content is ProgressBar bar)
-                                    bar.Value = newp;
+                                Progress.Value = newp;
                             });
                         }
                     }
@@ -433,8 +461,7 @@ namespace FlvMonitor
                     
                     _queue.TryEnqueue(() =>
                     {
-                        if (Progress.Content is ProgressBar bar)
-                            bar.Value = 100;
+                        Progress.Value = 100;
 
                         DVButton.IsEnabled = false;
 
@@ -464,6 +491,7 @@ namespace FlvMonitor
         {
             _statusThread = new Thread( async () =>
             {
+                TotalDownloadBytes = 0;
                 try
                 {
                     using (HttpClient client = new())
@@ -480,9 +508,10 @@ namespace FlvMonitor
                                 {
                                     byte[] buffer = new byte[8192];
                                     int bytesRead;
-
+                                    
                                     while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                                     {
+                                        TotalDownloadBytes += bytesRead;
                                         await fileStream.WriteAsync(buffer, 0, bytesRead);
                                     }
                                 }
@@ -496,8 +525,7 @@ namespace FlvMonitor
 
                     _queue.TryEnqueue(() =>
                     {
-                        if (Progress.Content is ProgressRing ring)
-                            ring.IsActive = false;
+                        ProgressDownload.IsIndeterminate = false;
 
                         DVButton.IsEnabled = false;
 
@@ -539,19 +567,6 @@ namespace FlvMonitor
                 var path = files[0].Path;
                 if (Path.Exists(path))
                 {
-                    ProgressBar bar = new()
-                    {
-                        Minimum = 0,
-                        Maximum = 100,
-                        Background = new SolidColorBrush(Colors.AliceBlue),
-                        Foreground  = new SolidColorBrush(Colors.LightSeaGreen),
-                        MinHeight = 8,
-                        Name ="PBLoading",
-                        Margin= new Thickness(4, 0, 4, 0)
-                    };
-
-                    Progress.Content = bar;
-
                     RunAysnc(path, isVideoON, isAudioON);
                 }
             }
@@ -590,67 +605,46 @@ namespace FlvMonitor
                 return;
             else
             {
-                ProgressBar bar = new()
-                {
-                    Minimum = 0,
-                    Maximum = 100,
-                    Background = new SolidColorBrush(Colors.AliceBlue),
-                    Foreground  = new SolidColorBrush(Colors.LightSeaGreen),
-                    MinHeight = 8,
-                    Name ="PBLoading",
-                    Margin= new Thickness(4, 0, 4, 0)
-                };
-
-                Progress.Content = bar;
-
                 RunAysnc(file.Path, isVideoON, isAudioON);
             }
         }
 
-        private async void Stream_Click(object sender, RoutedEventArgs e)
+        private void Stream_Click(object sender, RoutedEventArgs e)
         {
-            string urlpath = "";
-            {
-                var baseWidth = MainGrid.ActualWidth;
-                TextBox urlTextBox = new()
-                {
-                    PlaceholderText = "请输入 URL",
-                    MinWidth = baseWidth - 200
-                };
+            string urlpath = UrlTextBox.Text;
+            //{
+            //    var baseWidth = MainGrid.ActualWidth;
+            //    TextBox urlTextBox = new()
+            //    {
+            //        PlaceholderText = "请输入 URL",
+            //        MinWidth = baseWidth - 200
+            //    };
 
-                var dialog = new ContentDialog
-                {
-                    Title = "输入 URL",
-                    PrimaryButtonText = "确认",
-                    SecondaryButtonText = "取消",
-                    XamlRoot = MainGrid.XamlRoot,
-                    Content = urlTextBox,
-                    MinWidth = baseWidth - 100
-                };
+            //    var dialog = new ContentDialog
+            //    {
+            //        Title = "输入 URL",
+            //        PrimaryButtonText = "确认",
+            //        SecondaryButtonText = "取消",
+            //        XamlRoot = MainGrid.XamlRoot,
+            //        Content = urlTextBox,
+            //        MinWidth = baseWidth - 100
+            //    };
 
-                ContentDialogResult result = await dialog.ShowAsync();
+            //    ContentDialogResult result = await dialog.ShowAsync();
 
-                // 确认按钮被点击
-                if (result == ContentDialogResult.Primary)
-                {
-                    urlpath = urlTextBox.Text;
-                }
-            }
+            //    // 确认按钮被点击
+            //    if (result == ContentDialogResult.Primary)
+            //    {
+            //        urlpath = urlTextBox.Text;
+            //    }
+            //}
 
             bool isVideoON = VideoToggle.IsOn;
             bool isAudioON = AVisualToggle.IsOn;
 
             if (urlpath.StartsWith("http://"))
             {
-                ProgressRing ring = new()
-                {
-                    Background = new SolidColorBrush(Colors.AliceBlue),
-                    Foreground  = new SolidColorBrush(Colors.LightSeaGreen),
-                };
-
-                Progress.Content = ring;
-                ring.IsActive = true;
-
+                ProgressDownload.IsIndeterminate = true;
                 RunUrlAysnc(urlpath, isVideoON, isAudioON);
             }
         }

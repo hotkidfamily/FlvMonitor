@@ -8,7 +8,7 @@ namespace FlvMonitor.Library
 {
     class NaluDetail
     {
-        public string type;
+        public string type = "";
         public long offset;
     }
     struct VideoTag
