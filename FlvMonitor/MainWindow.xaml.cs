@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -93,18 +94,19 @@ namespace FlvMonitor
     /// <summary>
     /// An empty window that can be used on its own or navigated to within a Frame.
     /// </summary>
-    public sealed partial class MainWindow : WindowEx, INotifyPropertyChanged
+    public sealed partial class MainWindow : WindowEx, INotifyPropertyChanged, INotifyCollectionChanged
     {
         private Thread? _statusThread;
         private CancellationTokenSource _downloadcts = new ();
         private Thread? _downloadThread;
         private DispatcherQueue _queue;
-        private ObservableCollection<ParseListViewItem> _itemsViewList = [];
         private List<FlvTag> _itemsList = [];
         private ContentDialog _contentDialog;
         private string _tempPath = default!;
 
         private long _totalDownloadBytes = 0;
+
+        public ObservableCollection<ParseListViewItem> ItemsViewList = [];
 
         public long TotalDownloadBytes
         {
@@ -122,14 +124,17 @@ namespace FlvMonitor
             DependencyProperty.Register("TotalDownloadBytes", typeof(long), typeof(MainWindow), new PropertyMetadata(0));
 
         public event PropertyChangedEventHandler? PropertyChanged;
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
         private void OnPropertyChanged([CallerMemberName] string propertyName = "")
         {
-            if (PropertyChanged != null)
-            {
-                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
-            }
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+        private void OnCollectionChanged(NotifyCollectionChangedEventArgs v)
+        {
+            CollectionChanged?.Invoke(this, v);
+        }
+
 
         public MainWindow()
         {
@@ -144,7 +149,8 @@ namespace FlvMonitor
             
             _queue = DispatcherQueue.GetForCurrentThread();
             AppTitle.Text = $"FlvMonitor {VersionInfo.DisplayVersion}";
-            DVButton.IsEnabled = _itemsViewList.Count > 0;
+            DVButton.IsEnabled = ItemsViewList.Count > 0;
+            ItemsViewList.CollectionChanged +=ItemsViewList_CollectionChanged;
             _contentDialog = new ContentDialog();
 
             this.ExtendsContentIntoTitleBar = true;
@@ -155,6 +161,24 @@ namespace FlvMonitor
             if (!Path.Exists(_tempPath))
             {
                 Directory.CreateDirectory(_tempPath);
+            }
+        }
+
+        private void ItemsViewList_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            switch (e.Action)
+            {
+            case NotifyCollectionChangedAction.Add:
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, e.NewItems));
+                break;
+
+            case NotifyCollectionChangedAction.Remove:
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, e.NewItems));
+                break;
+
+            case NotifyCollectionChangedAction.Reset:
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset, e.NewItems));
+                break;
             }
         }
 
@@ -187,7 +211,7 @@ namespace FlvMonitor
         private void UpdateListView()
         {
             var TagTypes = TagComboBox.SelectedIndex;
-            _itemsViewList.Clear();
+            ItemsViewList.Clear();
 
             int frameid = 0;
             long last_video_dts = long.MaxValue;
@@ -266,7 +290,7 @@ namespace FlvMonitor
                     {
                         it.TagType = $"📄{flv.tagType}";
                     }
-                    _itemsViewList.Add(it);
+                    ItemsViewList.Add(it);
                 }
             }
             else if (TagTypes == 1)
@@ -310,7 +334,7 @@ namespace FlvMonitor
 
                         it.Image = Path.Join(_tempPath, $"{pts}.png");
 
-                        _itemsViewList.Add(it);
+                        ItemsViewList.Add(it);
                     }
                 }
             }
@@ -347,13 +371,9 @@ namespace FlvMonitor
 
                         last_audio_pts = flv.timestamp;
                         it.Image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
-                        _itemsViewList.Add(it);
+                        ItemsViewList.Add(it);
                     }
                 }
-            }
-            if (LVMain != null && _itemsList.Count > 0)
-            {
-                LVMain.ItemsSource = _itemsViewList;
             }
         }
 
@@ -456,7 +476,7 @@ namespace FlvMonitor
 
                         UpdateListView();
 
-                        DVButton.IsEnabled = _itemsViewList.Count > 0;
+                        DVButton.IsEnabled = ItemsViewList.Count > 0;
                     });
                 }
                 catch (Exception ex)
@@ -562,7 +582,7 @@ namespace FlvMonitor
 
                 UpdateListView();
 
-                DVButton.IsEnabled = _itemsViewList.Count > 0;
+                DVButton.IsEnabled = ItemsViewList.Count > 0;
             }
         }
 

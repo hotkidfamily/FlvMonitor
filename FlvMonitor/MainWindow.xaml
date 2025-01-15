@@ -185,7 +185,8 @@
         </Grid>
         <ListView Grid.Row="3"
                   Name="LVMain"
-                  SelectionMode="Single">
+                  SelectionMode="Single"
+                  ItemsSource="{x:Bind ItemsViewList, Mode=OneWay}">
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <Grid Background="{Binding Converter={StaticResource ListViewItemOEConverter}, ConverterParameter={Binding FrameId}}"
