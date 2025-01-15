@@ -43,7 +43,7 @@ namespace FlvMonitor.Library
     }
     internal class FlvSpecs
     {
-        private FileStream _fs;
+        private Stream _fs;
         long _fileOffset = 0;
         long _fileLength = 0;
 
@@ -168,10 +168,10 @@ namespace FlvMonitor.Library
             numOfArrays = 22,
         };
 
-        public FlvSpecs(string path)
+        public FlvSpecs(Stream fs, long length)
         {
-            _fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536);
-            _fileLength = _fs.Length;
+            _fs = fs;
+            _fileLength = length;
         }
 
         public long parseFileHeader()
@@ -181,11 +181,11 @@ namespace FlvMonitor.Library
             {
                 if (_fileLength >= 8 && ReadUInt32() == 0x66747970)
                 {
-                    throw new Exception($"{Path.GetFileName(_fs.Name)} is a MP4 file. YAMB or MP4Box can be used to extract streams.");
+                    throw new Exception($"Input is a MP4 file. YAMB or MP4Box can be used to extract streams.");
                 }
                 else
                 {
-                    throw new Exception($"{Path.GetFileName(_fs.Name)} isn't a FLV file.");
+                    throw new Exception($"Input isn't a FLV file.");
                 }
             }
 

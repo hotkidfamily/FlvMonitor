@@ -11,11 +11,13 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Xml.Schema;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using WinUIEx;
@@ -94,6 +96,8 @@ namespace FlvMonitor
     public sealed partial class MainWindow : WindowEx, INotifyPropertyChanged
     {
         private Thread? _statusThread;
+        private CancellationTokenSource _downloadcts = new ();
+        private Thread? _downloadThread;
         private DispatcherQueue _queue;
         private ObservableCollection<ParseListViewItem> _itemsViewList = [];
         private List<FlvTag> _itemsList = [];
@@ -104,17 +108,17 @@ namespace FlvMonitor
 
         public long TotalDownloadBytes
         {
-            get { return _totalDownloadBytes; }
-            set { if (_totalDownloadBytes != value)
+            get => _totalDownloadBytes; 
+            set 
+            {
+                if(_totalDownloadBytes != value) 
                 {
                     _totalDownloadBytes = value;
                     OnPropertyChanged();
                 }
             }
         }
-
-        // Using a DependencyProperty as the backing store for DownloadBytes.  This enables animation, styling, binding, etc...
-        public static readonly DependencyProperty DownloadBytesProperty =
+        public static readonly DependencyProperty TotalDownloadBytesProperty =
             DependencyProperty.Register("TotalDownloadBytes", typeof(long), typeof(MainWindow), new PropertyMetadata(0));
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -154,10 +158,23 @@ namespace FlvMonitor
             }
         }
 
-        private IEnumerable<FlvTag> _extraAction(string path, bool pathIsUrl=false)
+        private IEnumerable<FlvTag> _extraFile(string path)
         {
-            ObservableCollection<ParseListViewItem> lvItems = [];
-            FlvSpecs parser = new(path);
+            FileStream fs = new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536);
+            FlvSpecs parser = new(fs, fs.Length);
+            long offset = parser.parseFileHeader();
+
+            while (parser.parseTag(offset, out var tag))
+            {
+                offset += tag.previousTagSize + 4;
+                yield return tag;
+            }
+        }
+
+        private IEnumerable<FlvTag> _extraStreamFile(string path)
+        {
+            FileStream fs = new(path, FileMode.Open, FileAccess.Read, FileShare.Write, 65536);
+            FlvSpecs parser = new(fs, fs.Length);
             long offset = parser.parseFileHeader();
 
             while (parser.parseTag(offset, out var tag))
@@ -250,12 +267,6 @@ namespace FlvMonitor
                         it.TagType = $"📄{flv.tagType}";
                     }
                     _itemsViewList.Add(it);
-                    //var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
-                    //var oldp = PBLoading.Value;
-                    //if (oldp != newp)
-                    //{
-                    //    PBLoading.Value = newp;
-                    //}
                 }
             }
             else if (TagTypes == 1)
@@ -301,12 +312,6 @@ namespace FlvMonitor
 
                         _itemsViewList.Add(it);
                     }
-                    //var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
-                    //var oldp = PBLoading.Value;
-                    //if (oldp != newp)
-                    //{
-                    //    PBLoading.Value = newp;
-                    //}
                 }
             }
             else if (TagTypes == 2)
@@ -344,23 +349,15 @@ namespace FlvMonitor
                         it.Image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
                         _itemsViewList.Add(it);
                     }
-                    //var newp = _itemsViewList.Count / _itemsList.Count + 0.5;
-                    //var oldp = PBLoading.Value;
-                    //if (oldp != newp)
-                    //{
-                    //    PBLoading.Value = newp;
-                    //}
                 }
             }
-
-            //PBLoading.Value = 100;
             if (LVMain != null && _itemsList.Count > 0)
             {
                 LVMain.ItemsSource = _itemsViewList;
             }
         }
 
-        private void RunAysnc(string path, bool isVideoON, bool isAudioON, bool sourceIsUrl=false)
+        private void RunAysnc(string path, bool isVideoON, bool isAudioON)
         {
             FileInfo fi = new(path);
             
@@ -378,12 +375,8 @@ namespace FlvMonitor
                 {
                     isVideoON = false;
                     isAudioON = false;
-                    //VideoToggle.IsOn = false;
-                    //AVisualToggle.IsOn = false;
                 }
             }
-
-           
 
             _statusThread = new Thread(() =>
             {
@@ -394,11 +387,7 @@ namespace FlvMonitor
                     FFmpegDecoder vd = new(_tempPath);
                     FFmpegDecoder ad = new(_tempPath);
 
-                    while (!File.Exists(path)) {
-                        Thread.Sleep(100);
-                    }
-
-                    foreach (var flv in _extraAction(path, sourceIsUrl))
+                    foreach (var flv in _extraFile(path))
                     {
                         _itemsList.Add(flv);
 
@@ -487,32 +476,36 @@ namespace FlvMonitor
         }
 
 
-        private void RunUrlAysnc(string urlpath, bool isVideON, bool isAudioON, bool sourceIsUrl = true)
+        private void RunUrlAysnc(string urlpath, bool isVideON, bool isAudioON, CancellationToken token)
         {
-            _statusThread = new Thread( async () =>
+            _downloadThread = new Thread( async () =>
             {
-                TotalDownloadBytes = 0;
+                long downloadbytes = 0;
                 try
                 {
                     using (HttpClient client = new())
                     {
                         try
                         {
-                            HttpResponseMessage response = await client.GetAsync(urlpath, HttpCompletionOption.ResponseHeadersRead);
+                            HttpResponseMessage response = await client.GetAsync(urlpath, HttpCompletionOption.ResponseHeadersRead, token);
                             response.EnsureSuccessStatusCode();
 
-                            using (Stream stream = await response.Content.ReadAsStreamAsync())
+                            using (Stream stream = await response.Content.ReadAsStreamAsync(token))
                             {
                                 string filepath = Path.Combine(_tempPath, "live-stream.flv");
                                 using (FileStream fileStream = new(filepath, FileMode.Create, FileAccess.Write, FileShare.Read))
                                 {
                                     byte[] buffer = new byte[8192];
                                     int bytesRead;
-                                    
-                                    while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+
+                                    while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false)) > 0)
                                     {
-                                        TotalDownloadBytes += bytesRead;
-                                        await fileStream.WriteAsync(buffer, 0, bytesRead);
+                                    	downloadbytes += bytesRead;
+                                        _queue.TryEnqueue(() =>
+                                        {
+                                            TotalDownloadBytes = downloadbytes/1024;
+                                        });
+                                        await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead));
                                     }
                                 }
                             }
@@ -522,17 +515,6 @@ namespace FlvMonitor
                             Console.WriteLine($"发生错误: {ex.Message}");
                         }
                     }
-
-                    _queue.TryEnqueue(() =>
-                    {
-                        ProgressDownload.IsIndeterminate = false;
-
-                        DVButton.IsEnabled = false;
-
-                        UpdateListView();
-
-                        DVButton.IsEnabled = _itemsViewList.Count > 0;
-                    });
                 }
                 catch (Exception ex)
                 {
@@ -547,7 +529,7 @@ namespace FlvMonitor
                 }
             });
 
-            _statusThread.Start();
+            _downloadThread.Start();
         }
 
         private async void Grid_DragOver(object sender, DragEventArgs e)
@@ -642,11 +624,30 @@ namespace FlvMonitor
             bool isVideoON = VideoToggle.IsOn;
             bool isAudioON = AVisualToggle.IsOn;
 
-            if (urlpath.StartsWith("http://"))
+            if(_downloadThread == null)
             {
-                ProgressDownload.IsIndeterminate = true;
-                RunUrlAysnc(urlpath, isVideoON, isAudioON);
+                if (urlpath.StartsWith("http://"))
+                {
+                    ProgressDownload.IsIndeterminate = true;
+                    TotalDownloadBytes = 0;
+                    _downloadcts = new CancellationTokenSource();
+                    RunUrlAysnc(urlpath, isVideoON, isAudioON, _downloadcts.Token);
+                    DownloadBtn.Content = "Stop";
+                }
             }
+            else
+            {
+                _downloadcts.Cancel();
+                _downloadThread.Join();
+                _downloadThread = null;
+                DownloadBtn.Content = "Download";
+                ProgressDownload.IsIndeterminate = false;
+            }
+        }
+
+        private void UrlTextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            UrlTextBox.Select(0, 0);
         }
     }
 }

@@ -49,19 +49,23 @@
                     <ColumnDefinition Width="2*" />
                     <ColumnDefinition Width="3*" />
                 </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0" Name="UrlTextBox" PlaceholderText="Please input URL for downloading" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="0"
+                         Name="UrlTextBox"
+                         PlaceholderText="Please input URL for downloading"
+                         VerticalAlignment="Center"
+                         LostFocus="UrlTextBox_LostFocus"/>
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
                             Spacing="8"
                             VerticalAlignment="Stretch">
-                    <Button Name="Download"
+                    <Button Name="DownloadBtn"
                             Click="Stream_Click"
-                            Height="36">
+                            Width="88">
                         Download
                     </Button>
-                    <TextBlock Name="DownloadStatics"
-                               Text="{Binding TotalDownloadBytes,Mode=OneWay}" VerticalAlignment="Center"/>
-                    <TextBlock Text="Bytes"
+                    <TextBlock Text="{x:Bind TotalDownloadBytes,Mode=OneWay}"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="KBytes"
                                VerticalAlignment="Center" />
                 </StackPanel>
                 <ProgressBar Grid.Column="2"
@@ -143,7 +147,8 @@
                 </ProgressBar>
             </Grid>
         </Grid>
-        <Grid Grid.Row="2" Background="LightCoral">
+        <Grid Grid.Row="2"
+              Background="LightCoral">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="5*" />
                 <ColumnDefinition Width="5*" />
