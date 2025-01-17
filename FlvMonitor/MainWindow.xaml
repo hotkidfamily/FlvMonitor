@@ -64,6 +64,11 @@
                             Width="88">
                         Download
                     </Button>
+                    <Button Name="OpenFile"
+                            Click="OpenFile_Click"
+                            Width="88">
+                        Open Folder
+                    </Button>
                     <TextBlock Text="{x:Bind TotalDownloadBytes,Mode=OneWay}"
                                VerticalAlignment="Center" />
                     <TextBlock Text="KBytes"

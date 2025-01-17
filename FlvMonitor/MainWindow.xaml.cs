@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -32,7 +33,8 @@ namespace FlvMonitor
         private DispatcherQueue _queue;
         private List<FlvTag> _itemsList = [];
         private ContentDialog _contentDialog;
-        private string _tempPath = default!;
+        private string _tempImagePath = default!;
+        private string _tempDownloadPath = default!;
 
         private long _totalDownloadBytes = 0;
         private bool _isIdle = true;
@@ -109,11 +111,15 @@ namespace FlvMonitor
             this.ExtendsContentIntoTitleBar = true;
             this.SetTitleBar(AppTitleBar);
 
-            _tempPath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp\\FlvMonitor");
-
-            if (!Path.Exists(_tempPath))
+            _tempImagePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp\\FlvMonitor\\Images");
+            _tempDownloadPath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp\\FlvMonitor\\Download");
+            if (!Path.Exists(_tempImagePath))
             {
-                Directory.CreateDirectory(_tempPath);
+                Directory.CreateDirectory(_tempImagePath);
+            }
+            if (!Path.Exists(_tempDownloadPath))
+            {
+                Directory.CreateDirectory(_tempDownloadPath);
             }
         }
 
@@ -162,14 +168,17 @@ namespace FlvMonitor
 
         private async void Provider_ProviderDataChanged(byte[] buffer, long length)
         {
-            if(_fs == null)
+            if (IsSaveUrlToTile)
             {
-                string filepath = Path.Combine(_tempPath, "live-stream.flv");
-                _fs = new(filepath, FileMode.Create, FileAccess.Write, FileShare.Read);
-            }
-            if (_fs != null)
-            {
-                await _fs.WriteAsync(buffer.AsMemory(0, (int)length));
+                if (_fs == null)
+                {
+                    string filepath = Path.Combine(_tempDownloadPath, "live-stream.flv");
+                    _fs = new(filepath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                }
+                if (_fs != null)
+                {
+                    await _fs.WriteAsync(buffer.AsMemory(0, (int)length));
+                }
             }
         }
 
@@ -203,7 +212,7 @@ namespace FlvMonitor
                             last_audio_pts = flv.timestamp;
                         }
 
-                        string image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
+                        string image = Path.Join(_tempImagePath, $"audio_{flv.timestamp}.png");
                         var aptsd = flv.timestamp - last_audio_pts;
                         ParseListViewItem it = new(flv, frameid++, image, aptsd, 0);
 
@@ -225,7 +234,7 @@ namespace FlvMonitor
 
                         long tagPtsDiff = flv.timestamp - last_video_dts;
                         long calcPtsDiff = pts - last_video_pts;
-                        string image = Path.Join(_tempPath, $"{pts}.png");
+                        string image = Path.Join(_tempImagePath, $"{pts}.png");
 
                         ParseListViewItem it = new(flv, frameid++, image, tagPtsDiff, calcPtsDiff);
 
@@ -262,7 +271,7 @@ namespace FlvMonitor
 
                         long tagPtsDiff = flv.timestamp - last_video_dts;
                         long calcPtsDiff = pts - last_video_pts;
-                        string image = Path.Join(_tempPath, $"{pts}.png");
+                        string image = Path.Join(_tempImagePath, $"{pts}.png");
 
                         ParseListViewItem it = new(flv, frameid++, image, tagPtsDiff, calcPtsDiff);
 
@@ -285,7 +294,7 @@ namespace FlvMonitor
                             last_audio_pts = flv.timestamp;
                         }
 
-                        string image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
+                        string image = Path.Join(_tempImagePath, $"audio_{flv.timestamp}.png");
                         var aptsd = flv.timestamp - last_audio_pts;
                         ParseListViewItem it = new(flv, frameid++, image, aptsd, 0);
 
@@ -319,8 +328,8 @@ namespace FlvMonitor
 
                 try
                 {
-                    FFmpegDecoder vd = new(_tempPath);
-                    FFmpegDecoder ad = new(_tempPath);
+                    FFmpegDecoder vd = new(_tempImagePath);
+                    FFmpegDecoder ad = new(_tempImagePath);
 
                     _itemsList.Clear();
 
@@ -375,7 +384,7 @@ namespace FlvMonitor
 
                                 long tagPtsDiff = flv.timestamp - last_video_dts;
                                 long calcPtsDiff = pts - last_video_pts;
-                                string image = Path.Join(_tempPath, $"{pts}.png");
+                                string image = Path.Join(_tempImagePath, $"{pts}.png");
 
                                 ParseListViewItem it = new(flv, frameid++, image, tagPtsDiff, calcPtsDiff);
 
@@ -413,7 +422,7 @@ namespace FlvMonitor
                                     last_audio_pts = flv.timestamp;
                                 }
 
-                                string image = Path.Join(_tempPath, $"audio_{flv.timestamp}.png");
+                                string image = Path.Join(_tempImagePath, $"audio_{flv.timestamp}.png");
                                 var aptsd = flv.timestamp - last_audio_pts;
                                 ParseListViewItem it = new(flv, frameid++, image, aptsd, 0);
 
@@ -613,6 +622,13 @@ namespace FlvMonitor
                     {
                         _statusThread.Join();
                     }
+
+                    if (_fs != null)
+                    {
+                        _fs.Flush();
+                        _fs.Close();
+                        _fs = null;
+                    }
                     _statusThread = null;
                     IsIdle = true;
 
@@ -625,6 +641,12 @@ namespace FlvMonitor
         private void UrlTextBox_LostFocus(object sender, RoutedEventArgs e)
         {
             UrlTextBox.Select(0, 0);
+        }
+
+        private void OpenFile_Click(object sender, RoutedEventArgs e)
+        {
+            string path = _tempDownloadPath;
+            Process.Start("explorer.exe", path);
         }
     }
 }
