@@ -3,25 +3,26 @@
                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                 xmlns:local="using:FlvMonitor"
+                xmlns:view="using:FlvMonitor.View"
                 xmlns:WinEx="using:WinUIEx"
                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                 mc:Ignorable="d"
                 Title="FlvMonitor">
 
-    <Grid AllowDrop="True"
+    <Grid AllowDrop="{x:Bind IsIdle, Mode=OneWay}"
           DragLeave="Grid_DragOver"
           Name="MainGrid">
         <Grid.Resources>
-            <local:ListViewItemOEConverter x:Key="ListViewItemOEConverter" />
-            <local:ListViewAVFrameIntervalConverter x:Key="ListViewAVFrameIntervalConverter" />
-            <local:LongToHexConverter x:Key="LongToHexConverter" />
+            <view:ListViewItemOEConverter x:Key="ListViewItemOEConverter" />
+            <view:ListViewAVFrameIntervalConverter x:Key="ListViewAVFrameIntervalConverter" />
+            <view:LongToHexConverter x:Key="LongToHexConverter" />
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
-            <RowDefinition Height="48" />
+            <RowDefinition Height="96" />
             <RowDefinition Height="32" />
-            <RowDefinition />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Border Grid.Row="0"
                 Name="AppTitleBar">
@@ -30,93 +31,153 @@
                 <ImageIcon Source="Assets/mainicon.png"
                            Height="24"
                            Margin="4,0,0,0" />
-                <TextBlock Name="AppTitle"
-                           Text="FlvMonitor"
-                           VerticalAlignment="Center" />
+                <RichTextBlock Name="AppTitle"
+                               VerticalAlignment="Center">
+                    <Paragraph>
+                        FlvMonitor
+                        <Run FontStyle="Normal"
+                             FontWeight="Bold"
+                             Foreground="Green"
+                             x:Name="TitleName">loading...</Run>
+                        | 
+                        <Run FontStyle="Italic"
+                             FontWeight="Bold"
+                             Foreground="Red"
+                             x:Name="TitlePid">loading...</Run>
+                    </Paragraph>
+                </RichTextBlock>
             </StackPanel>
         </Border>
         <Grid Grid.Row="1"
               Padding="4"
               Background="LightBlue">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="5*" />
-                <ColumnDefinition Width="3*" />
-                <ColumnDefinition Width="2*" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0"
-                        Orientation="Horizontal"
-                        Spacing="8"
-                        VerticalAlignment="Center">
-                <Button Name="Browser"
-                        Click="Browser_Click">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="2*" />
-                            <RowDefinition Height="3*" />
-                        </Grid.RowDefinitions>
-                        <Image Grid.Row="0"
-                               Source="Assets/film.png" />
-                        <TextBlock Grid.Row="1"
-                                   Text="File" />
-                    </Grid>
-                </Button>
-                <Button>
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="2*" />
-                            <RowDefinition Height="3*" />
-                        </Grid.RowDefinitions>
-                        <Image Grid.Row="0"
-                               Source="Assets/url.png" />
-                        <TextBlock Grid.Row="1"
-                                   Text="URL" />
-                    </Grid>
-                </Button>
-                <Button Name="DVButton">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="2*" />
-                            <RowDefinition Height="3*" />
-                        </Grid.RowDefinitions>
-                        <Image Grid.Row="0"
-                               Source="Assets/i36_dv.png" />
-                        <TextBlock Grid.Row="1"
-                                   Text="Bitrate" />
-                    </Grid>
-                </Button>
-                <ComboBox VerticalAlignment="Center"
-                          Height="36"
-                          Name="TagComboBox"
-                          SelectionChanged="TagComboBox_SelectionChanged">
-                    <ComboBoxItem Content="All Tags"
-                                  IsSelected="True" />
-                    <ComboBoxItem Content="Video Tags" />
-                    <ComboBoxItem Content="Audio Tags" />
-                </ComboBox>
-            </StackPanel>
-            <Grid Grid.Column="1">
-                <StackPanel Orientation="Horizontal"
-                            Spacing="4">
-                    <ToggleSwitch Name="VideoToggle"
-                                  IsOn="False"
-                                  OffContent="No Image"
-                                  OnContent="Image" />
-                    <ToggleSwitch Name="AVisualToggle"
-                                  IsOn="True"
-                                  OffContent="No Wave"
-                                  OnContent="Audio Wave" />
+            <Grid.RowDefinitions>
+                <RowDefinition Height="4*" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="6*" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="5*" />
+                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="2*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Name="UrlTextBox"
+                         PlaceholderText="Please input URL for downloading"
+                         VerticalAlignment="Center"
+                         LostFocus="UrlTextBox_LostFocus" />
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Stretch">
+                    <Button Name="DownloadBtn"
+                            Click="Stream_Click"
+                            Width="88">
+                        Download
+                    </Button>
+                    <Button Name="OpenFile"
+                            Click="OpenFile_Click"
+                            Width="88">
+                        Open Folder
+                    </Button>
+                    <TextBlock Text="{x:Bind TotalDownloadBytes,Mode=OneWay}"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="KBytes"
+                               VerticalAlignment="Center" />
                 </StackPanel>
+                <ProgressBar Grid.Column="2"
+                             Name="ProgressDownload"
+                             IsIndeterminate="False">
+                </ProgressBar>
             </Grid>
-            <ProgressBar Grid.Column="2"
-                         Name="PBLoading"
-                         Margin="4, 0, 4, 0"
-                         Minimum="0"
-                         Maximum="100"
-                         Background="AliceBlue"
-                         Foreground="LightSeaGreen"
-                         MinHeight="8" />
+            <Border Grid.Row="1"
+                    BorderBrush="DarkGreen"
+                    BorderThickness="1"
+                    Height="2"></Border>
+            <Grid Grid.Row="2"
+                  Padding="4"
+                  Background="LightBlue">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="5*" />
+                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="2*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center">
+                    <Button Name="Browser"
+                            Click="Browser_Click"
+                            IsEnabled="{x:Bind IsIdle, Mode=OneWay}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" />
+                                <RowDefinition Height="3*" />
+                            </Grid.RowDefinitions>
+                            <Image Grid.Row="0"
+                                   Source="Assets/film.png" />
+                            <TextBlock Grid.Row="1"
+                                       Text="File" />
+                        </Grid>
+                    </Button>
+                    <Button Name="DVButton"
+                            IsEnabled="{x:Bind IsIdle,Mode=OneWay}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" />
+                                <RowDefinition Height="3*" />
+                            </Grid.RowDefinitions>
+                            <Image Grid.Row="0"
+                                   Source="Assets/i36_dv.png" />
+                            <TextBlock Grid.Row="1"
+                                       Text="Bitrate" />
+                        </Grid>
+                    </Button>
+                    <ComboBox VerticalAlignment="Center"
+                              Height="36"
+                              Name="TagComboBox"
+                              SelectionChanged="TagComboBox_SelectionChanged">
+                        <ComboBoxItem Content="All Tags"
+                                      IsSelected="True" />
+                        <ComboBoxItem Content="Video Tags" />
+                        <ComboBoxItem Content="Audio Tags" />
+                    </ComboBox>
+                </StackPanel>
+                <Grid Grid.Column="1">
+                    <StackPanel Orientation="Horizontal">
+                        <ToggleSwitch Name="VideoToggle"
+                                      IsOn="{x:Bind IsVideoOn,Mode=TwoWay}"
+                                      OffContent="No Image"
+                                      OnContent="Image"
+                                      Width="120"
+                                      MinWidth="80"/>
+                        <ToggleSwitch Name="AVisualToggle"
+                                      IsOn="{x:Bind IsAudioOn,Mode=TwoWay}"
+                                      OffContent="No Wave"
+                                      OnContent="Wave"
+                                      Width="120"
+                                      MinWidth="80" />
+                        <ToggleSwitch Name="SaveToggle"
+                                      IsOn="{x:Bind IsSaveUrlToTile,Mode=TwoWay}"
+                                      OffContent="Drop"
+                                      OnContent="Save"
+                                      Width="120"
+                                      MinWidth="80" />
+                    </StackPanel>
+                </Grid>
+                <ProgressBar Grid.Column="2"
+                             Name="Progress"
+                             Minimum="0"
+                             Maximum="100"
+                             Background="AliceBlue"
+                             Foreground="LightSeaGreen"
+                             MinHeight="8">
+                </ProgressBar>
+            </Grid>
         </Grid>
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2"
+              Background="LightCoral">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="5*" />
                 <ColumnDefinition Width="5*" />
@@ -153,7 +214,8 @@
         </Grid>
         <ListView Grid.Row="3"
                   Name="LVMain"
-                  SelectionMode="Single">
+                  SelectionMode="Single"
+                  ItemsSource="{x:Bind ItemsViewList, Mode=OneWay}">
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <Grid Background="{Binding Converter={StaticResource ListViewItemOEConverter}, ConverterParameter={Binding FrameId}}"

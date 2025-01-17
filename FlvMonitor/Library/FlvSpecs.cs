@@ -1,17 +1,17 @@
 ﻿using FlvMonitor.Toolbox;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace FlvMonitor.Library
 {
-    class NaluDetail
+    public class NaluDetail
     {
-        public string type;
+        public string type = "";
         public long offset;
     }
-    struct VideoTag
+    public struct VideoTag
     {
         public uint frametype;
         public uint codecID;
@@ -21,7 +21,7 @@ namespace FlvMonitor.Library
         public long NALUs;
         public NaluDetail[] NaluDetails;
     };
-    struct AudioTag
+    public struct AudioTag
     {
         public uint soundFormat;
         public uint soundRate;
@@ -29,7 +29,7 @@ namespace FlvMonitor.Library
         public uint soundType;
         public uint aacPacketType;
     };
-    struct FlvTag
+    public struct FlvTag
     {
         public long addr;
         public uint tagType;
@@ -43,15 +43,14 @@ namespace FlvMonitor.Library
     }
     internal class FlvSpecs
     {
-        private FileStream _fs;
-        long _fileOffset = 0;
-        long _fileLength = 0;
+        private IDataProvider _fs;
 
         private int _nalLengthSize = 4;
         private bool _hevc_in_annexb = true;
         private long _last_video_dts = long.MaxValue;
         private long _last_video_pts = long.MaxValue;
         private long _last_audio_pts = long.MaxValue;
+        private CancellationToken _token;
 
         enum H264NalType : int
         {
@@ -168,33 +167,33 @@ namespace FlvMonitor.Library
             numOfArrays = 22,
         };
 
-        public FlvSpecs(string path)
+        public FlvSpecs(IDataProvider fs, CancellationToken token)
         {
-            _fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536);
-            _fileLength = _fs.Length;
+            _token = token;
+            _fs = fs;
         }
 
         public long parseFileHeader()
         {
-            Seek(0);
-            if (_fileLength < 4 || ReadUInt32() != 0x464C5601)
+            _fs.Seek(0);
+            if (_fs.RequestLength(4) || _fs.ReadUInt32() != 0x464C5601)
             {
-                if (_fileLength >= 8 && ReadUInt32() == 0x66747970)
+                if (_fs.RequestLength(4) && _fs.ReadUInt32() == 0x66747970)
                 {
-                    throw new Exception($"{Path.GetFileName(_fs.Name)} is a MP4 file. YAMB or MP4Box can be used to extract streams.");
+                    throw new Exception($"{_fs.Description()} is a MP4 file. YAMB or MP4Box can be used to extract streams.");
                 }
                 else
                 {
-                    throw new Exception($"{Path.GetFileName(_fs.Name)} isn't a FLV file.");
+                    throw new Exception($"{_fs.Description()} isn't a FLV file.");
                 }
             }
 
-            var flags = ReadUInt8();
-            var dataOffset = ReadUInt32();
+            var flags = _fs.ReadUInt8();
+            var dataOffset = _fs.ReadUInt32();
 
-            Seek(dataOffset);
+            _fs.Seek(dataOffset);
 
-            var prevTagSize = ReadUInt32();
+            var prevTagSize = _fs.ReadUInt32();
             _ = ParseHEVCMuxerType(ref _hevc_in_annexb);
 
             return dataOffset + 4;
@@ -212,17 +211,17 @@ namespace FlvMonitor.Library
             long curTagpos = 0;
             uint tagSize = 0;
 
-            if ((_fileLength - _fileOffset) < 11)
+            if (_fs.RequestLength(11))
             {
                 return false;
             }
-            curTagpos = CurReadPosition();
+            curTagpos = _fs.Position();
             // Read tag header
-            tagType = ReadUInt8();
-            dataSize = ReadUInt24();
-            timeStamp = ReadUInt24();
-            timeStamp |= ReadUInt8() << 24;
-            streamID = ReadUInt24();
+            tagType = _fs.ReadUInt8();
+            dataSize = _fs.ReadUInt24();
+            timeStamp = _fs.ReadUInt24();
+            timeStamp |= _fs.ReadUInt8() << 24;
+            streamID = _fs.ReadUInt24();
 
             tagSize = dataSize + 11;
 
@@ -231,15 +230,15 @@ namespace FlvMonitor.Library
             {
                 return true;
             }
-            if ((_fileLength - _fileOffset) < dataSize)
+            if (_fs.RequestLength(dataSize))
             {
                 return false;
             }
 
-            mediaInfo = ReadUInt8();
-            UInt32 composition = GetUInt32();
+            mediaInfo = _fs.ReadUInt8();
+            UInt32 composition = _fs.GetUInt32();
             dataSize -= 1;
-            data = ReadBytes((int)dataSize);
+            data = _fs.ReadBytes((int)dataSize);
 
             if ((tagType == 0x9) && ((mediaInfo >> 4) != 5))
             {
@@ -269,13 +268,13 @@ namespace FlvMonitor.Library
 
         public bool ParseHEVCMuxerType(ref bool bAnnexb)
         {
-            var offset = _fileOffset;
+            var offset = _fs.Position();
             int trueCnt = 0;
             uint prevTagSize;
             bool bAnnexb1 = false;
             int videoTagParseCnt = 0;
             int maxVideoTagParseCnt = 100; /* max parse tag is 100 video frames */
-            while (_fileOffset < _fileLength)
+            while (_fs.RequestLength(4))
             {
                 if (PreParseTag(ref videoTagParseCnt, ref bAnnexb1))
                 {
@@ -285,31 +284,34 @@ namespace FlvMonitor.Library
                 if (videoTagParseCnt > maxVideoTagParseCnt)
                     break;
 
-                if ((_fileLength - _fileOffset) < 4)
+                if (_fs.RequestLength(4))
                     break;
 
-                prevTagSize = ReadUInt32();
+                prevTagSize = _fs.ReadUInt32();
             }
 
             bAnnexb = videoTagParseCnt == trueCnt ? true : false;
 
-            Seek(offset);
+            _fs.Seek(offset);
             return true;
         }
 
         public bool parseTag(long offset, out FlvTag detail)
         {
             detail = new();
+            if (_token.IsCancellationRequested) { 
+                return false; 
+            }
 
             uint tagType, dataSize, timeStamp, streamID;
 
-            if ((_fileLength - _fs.Position) < 11)
+            if (_fs.RequestLength(11))
             {
                 return false;
             }
 
-            detail.addr = _fs.Position;
-            var tag = ReadBytes(11);
+            detail.addr = _fs.Position();
+            var tag = _fs.ReadBytes(11);
 
             tagType = tag[0];
             dataSize = (uint)tag[1] << 16 | (uint)tag[2] << 8 | (uint)tag[3];
@@ -322,13 +324,13 @@ namespace FlvMonitor.Library
             {
                 return true;
             }
-            if ((_fileLength - _fileOffset) < dataSize)
+            if (_fs.RequestLength(dataSize))
             {
                 return false;
             }
 
             byte[] data = new byte[tag.Length + dataSize];
-            var read_len = ReadBytes(data, tag.Length, (int)dataSize);
+            var read_len = _fs.ReadBytes(data, tag.Length, (int)dataSize);
             Array.Copy(tag, data, tag.Length);
 
             if (tagType == 9)
@@ -404,7 +406,7 @@ namespace FlvMonitor.Library
                 parserAudioPacket(ref data, ref detail);
             }
 
-            uint previousTagSize = ReadUInt32();
+            uint previousTagSize = _fs.ReadUInt32();
             detail.tagType = tagType;
             detail.dataSize = dataSize;
             detail.timestamp = timeStamp;
@@ -724,7 +726,7 @@ namespace FlvMonitor.Library
                 return "(unknown) ";
             }
         }
-
+        /*
         private void Seek(long offset)
         {
             _fs.Seek(offset, SeekOrigin.Begin);
@@ -780,5 +782,6 @@ namespace FlvMonitor.Library
             _fs.Seek(-4, SeekOrigin.Current);
             return BitConverterBE.ToUInt32(x, 0);
         }
+        */
     }
 }
