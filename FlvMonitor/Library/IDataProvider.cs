@@ -127,7 +127,7 @@ namespace FlvMonitor.Library
         private long _ReadPosition;
 
         private List<KeyValuePair<long, byte[]>> _datas = [];
-        private const int SINGLE_BUFF_SIZE = 2*1024*1024;
+        private const int SINGLE_BUFF_SIZE = 512*1024;
         private int _datas_index = 0;
         private long _datas_index_pos = 0;
 
@@ -151,6 +151,7 @@ namespace FlvMonitor.Library
             {
                 try
                 {
+                    long readSize = 0;
                     HttpResponseMessage response = await client.GetAsync(urlpath, HttpCompletionOption.ResponseHeadersRead, token);
                     response.EnsureSuccessStatusCode();
 
@@ -158,34 +159,39 @@ namespace FlvMonitor.Library
                     {
                         byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
                         int bytesRead;
+                        int bufferCopied = 0;
+                        byte[] np = ArrayPool<byte>.Shared.Rent(SINGLE_BUFF_SIZE);
+
                         while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false)) > 0)
                         {
-                            lock (this)
+                            readSize += bytesRead;
+                            UpdateProgress(readSize);
+                            DoDataChangedHanlder(buffer, bytesRead);
+                            if (SINGLE_BUFF_SIZE - bufferCopied >= bytesRead)
                             {
-                                /*
-                                byte[] np = ArrayPool<byte>.Shared.Rent(SINGLE_BUFF_SIZE);
-                                if(SINGLE_BUFF_SIZE - bufferCopied >= bytesRead)
-                                {
-                                    Array.Copy(buffer, 0, np, bufferCopied, bytesRead);
-                                    bufferCopied += bytesRead;
+                                Array.Copy(buffer, 0, np, bufferCopied, bytesRead);
+                                bufferCopied += bytesRead;
+                            }
+                            else
+                            {
+                                int firstCopied = SINGLE_BUFF_SIZE - bufferCopied;
+                                Array.Copy(buffer, 0, np, bufferCopied, firstCopied);
+                                lock (this) {
+                                    _datas.Add(new KeyValuePair<long, byte[]>(SINGLE_BUFF_SIZE, np));
+                                    _TotalLength += SINGLE_BUFF_SIZE;
                                 }
-                                else
-                                {
-                                    byte[] nmp = ArrayPool<byte>.Shared.Rent(SINGLE_BUFF_SIZE);
-                                    bufferCopied = 0;
-                                    Array.Copy(buffer, 0, nmp, bufferCopied, bytesRead);
-                                    bufferCopied += bytesRead;
-                                    _datas.Add(new KeyValuePair<long, byte[]>(bufferCopied, nmp));
-                                }
-                                */
+                        
+                                int remain = bytesRead - firstCopied;
 
-                                _datas.Add(new(bytesRead, buffer));
-                                _TotalLength += bytesRead;
-                                UpdateProgress(_TotalLength);
-                                DoDataChangedHanlder(buffer, bytesRead);
-                                buffer = ArrayPool<byte>.Shared.Rent(8192);
+                                np = ArrayPool<byte>.Shared.Rent(SINGLE_BUFF_SIZE);
+                                Array.Copy(buffer, firstCopied, np, 0, remain);
+                                bufferCopied = remain;
                             }
                         }
+
+                        //_datas.Add(new(bytesRead, buffer));
+                        //_TotalLength += bytesRead;
+                        //buffer = ArrayPool<byte>.Shared.Rent(8192);
                     }
                 }
                 catch (Exception ex)

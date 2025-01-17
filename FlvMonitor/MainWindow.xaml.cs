@@ -103,7 +103,8 @@ namespace FlvMonitor
             this.Move(640, 1280);
 
             _queue = DispatcherQueue.GetForCurrentThread();
-            AppTitle.Text = $"FlvMonitor {VersionInfo.DisplayVersion}";
+            TitleName.Text = $"{VersionInfo.DisplayVersion}";
+            TitlePid.Text = $"{Process.GetCurrentProcess().Id}";
             DVButton.IsEnabled = ItemsViewList.Count > 0;
             ItemsViewList.CollectionChanged +=ItemsViewList_CollectionChanged;
             _contentDialog = new ContentDialog();

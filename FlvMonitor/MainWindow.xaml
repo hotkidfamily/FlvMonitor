@@ -31,9 +31,21 @@
                 <ImageIcon Source="Assets/mainicon.png"
                            Height="24"
                            Margin="4,0,0,0" />
-                <TextBlock Name="AppTitle"
-                           Text="FlvMonitor"
-                           VerticalAlignment="Center" />
+                <RichTextBlock Name="AppTitle"
+                               VerticalAlignment="Center">
+                    <Paragraph>
+                        FlvMonitor
+                        <Run FontStyle="Normal"
+                             FontWeight="Bold"
+                             Foreground="Green"
+                             x:Name="TitleName">loading...</Run>
+                        | 
+                        <Run FontStyle="Italic"
+                             FontWeight="Bold"
+                             Foreground="Red"
+                             x:Name="TitlePid">loading...</Run>
+                    </Paragraph>
+                </RichTextBlock>
             </StackPanel>
         </Border>
         <Grid Grid.Row="1"
@@ -47,8 +59,8 @@
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*" />
-                    <ColumnDefinition Width="2*" />
                     <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="2*" />
                 </Grid.ColumnDefinitions>
                 <TextBox Grid.Column="0"
                          Name="UrlTextBox"
